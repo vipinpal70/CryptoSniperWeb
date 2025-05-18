@@ -12,8 +12,10 @@ import {
   Lock, 
   Settings 
 } from "lucide-react";
+import { useAuth } from "@/lib/auth";
 
 export default function Sidebar() {
+  const { user } = useAuth();
   const [location] = useLocation();
 
   const navItems = [
@@ -45,7 +47,7 @@ export default function Sidebar() {
         {navItems.map((item) => (
           <a
             key={item.path}
-            href={item.path}
+            href={ user ? item.path : "/visitor"}
             className={`flex items-center px-3 py-2 rounded-lg ${
               location === item.path
                 ? "bg-primary/10 text-white"

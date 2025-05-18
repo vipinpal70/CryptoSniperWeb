@@ -12,7 +12,7 @@ export default function AuthLayout({ children }: AuthLayoutProps) {
       {/* Left sidebar with branding and illustration */}
       <div className="w-full md:w-2/5 bg-secondary flex flex-col items-center justify-center p-8">
         <div className="w-full max-w-sm">
-          <div className="flex items-center mb-16">
+          <div className="fixed top-0 left-0 p-4 z-50">
             <Logo />
           </div>
           

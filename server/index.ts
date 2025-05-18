@@ -1,10 +1,26 @@
 import express, { type Request, Response, NextFunction } from "express";
 import { registerRoutes } from "./routes";
 import { setupVite, serveStatic, log } from "./vite";
+import os from "os";
 
 const app = express();
 app.use(express.json());
 app.use(express.urlencoded({ extended: false }));
+
+
+function getLocalIp() {
+  const interfaces = os.networkInterfaces();
+  for (const name of Object.keys(interfaces)) {
+    for (const iface of interfaces[name] ?? []) {
+      if (iface.family === "IPv4" && !iface.internal) {
+        return iface.address;
+      }
+    }
+  }
+  return "localhost";
+}
+
+
 
 app.use((req, res, next) => {
   const start = Date.now();
@@ -56,15 +72,16 @@ app.use((req, res, next) => {
     serveStatic(app);
   }
 
-  // ALWAYS serve the app on port 5000
+  // ALWAYS serve the app on port 5500
   // this serves both the API and the client.
   // It is the only port that is not firewalled.
-  const port = 5000;
+  const port = 7000;
+  const localIp = getLocalIp();
   server.listen({
     port,
     host: "0.0.0.0",
-    reusePort: true,
+    // reusePort: true,
   }, () => {
-    log(`serving on port ${port}`);
-  });
+        log(`Serving on http://localhost:${port} or http://${localIp}:${port}`);
+      });
 })();

@@ -1,27 +1,41 @@
-import { pgTable, text, serial, integer, boolean, timestamp, real, jsonb } from "drizzle-orm/pg-core";
+import {
+  pgTable,
+  text,
+  serial,
+  integer,
+  boolean,
+  timestamp,
+  real,
+  jsonb,
+} from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
 export const users = pgTable("users", {
-  id: serial("id").primaryKey(),
-  username: text("username").notNull().unique(),
+  id: serial("id").primaryKey(), // optional: add an ID if needed
   email: text("email").notNull().unique(),
-  name: text("name"),
+  google_id: text("google_id"), // was incorrect: '' is not a valid type
   phone: text("phone"),
+  username: text("username").notNull().unique(),
+  status: text("status").default("pending"), // corrected
   password: text("password").notNull(),
-  apiKey: text("api_key"),
-  apiSecret: text("api_secret"),
+  referralCode: text("referral_code"), // corrected
+  referralCount: integer("referral_count").default(0), // corrected
+  approvedAt: timestamp("approved_at"), // corrected from 'Date'
+  brokerName: text("broker_name"), // corrected
+  strategies: jsonb("strategies").default({}), // corrected
+  is_admin: boolean("is_admin").default(false),
+  isActive: boolean("is_active").default(true),
+  api_verified: boolean("api_verified").default(true),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
+
 
 export const insertUserSchema = createInsertSchema(users).pick({
   username: true,
   email: true,
-  name: true,
   phone: true,
   password: true,
-  apiKey: true,
-  apiSecret: true,
 });
 
 export const strategies = pgTable("strategies", {

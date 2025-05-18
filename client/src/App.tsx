@@ -15,6 +15,9 @@ import Positions from "@/pages/Positions";
 import History from "@/pages/History";
 import NotFound from "@/pages/not-found";
 import { useAuth } from "./lib/auth";
+import { useEffect, useState } from "react";
+import { supabase } from "@/lib/supabase";
+import Visitor from "@/pages/Visitor";
 
 function ProtectedRoute({ component: Component }: { component: React.ComponentType }) {
   const { user, isLoading } = useAuth();
@@ -25,7 +28,7 @@ function ProtectedRoute({ component: Component }: { component: React.ComponentTy
   
   if (!user) {
     // Redirect to login if not authenticated
-    window.location.href = "/signin";
+    window.location.href = "/visitor";
     return null;
   }
   
@@ -35,16 +38,16 @@ function ProtectedRoute({ component: Component }: { component: React.ComponentTy
 function Router() {
   return (
     <Switch>
+      <Route path="/visitor" component={Visitor} />
       <Route path="/signin" component={SignIn} />
       <Route path="/signup" component={SignUp} />
       <Route path="/verify-otp" component={OtpVerification} />
       <Route path="/complete-profile" component={CompleteProfile} />
-      
+      <Route path="/home" component={() => <ProtectedRoute component={Home} />} />
       <Route path="/" component={() => <ProtectedRoute component={Home} />} />
       <Route path="/strategies" component={() => <ProtectedRoute component={Strategies} />} />
       <Route path="/positions" component={() => <ProtectedRoute component={Positions} />} />
       <Route path="/history" component={() => <ProtectedRoute component={History} />} />
-      
       <Route component={NotFound} />
     </Switch>
   );
@@ -61,6 +64,36 @@ function App() {
       </AuthProvider>
     </QueryClientProvider>
   );
+}
+
+export function useUser() {
+  const [user, setUser] = useState<any>(null);
+
+  useEffect(() => {
+    const getUser = async () => {
+      const { data: { user }, error } = await supabase.auth.getUser();
+      if (error) {
+        console.error("Error fetching user:", error.message);
+      } else {
+        setUser(user);
+      }
+    };
+
+    getUser();
+
+    // Optional: Subscribe to auth changes
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_event, session) => {
+      setUser(session?.user ?? null);
+    });
+
+    return () => {
+      subscription.unsubscribe();
+    };
+  }, []);
+
+  return user;
 }
 
 export default App;
