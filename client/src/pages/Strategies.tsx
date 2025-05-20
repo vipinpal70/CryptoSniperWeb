@@ -1,55 +1,162 @@
 import React, { useState, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "@/lib/auth";
-import { supabase } from "@/lib/supabase";
 import Sidebar from "@/components/Sidebar";
 import Header from "@/components/Header";
-import { 
-  Card, 
-  CardContent
-} from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { 
-  AreaChart, 
-  Area, 
-  XAxis, 
-  YAxis, 
-  CartesianGrid, 
-  Tooltip, 
-  ResponsiveContainer,
-  ReferenceLine
-} from "recharts";
-import StrategyCard from "@/components/StrategyCard";
+import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer } from "recharts";
+import { useToast } from "@/hooks/use-toast";
 
 type StrategyViewType = "all" | "deployed" | "marketplace";
 
+interface Strategy {
+  _id: string;
+  name: string;
+  type: string;
+  leverage: string;
+  margin: string;
+  created_at: string;
+  updated_at: string;
+  is_active: boolean;
+}
+
 export default function Strategies() {
   const { user } = useAuth();
+  const { toast } = useToast();
   const [viewType, setViewType] = useState<StrategyViewType>("all");
-  
+  const [deployedStrategyNames, setDeployedStrategyNames] = useState<string[]>(() => {
+    // Initialize from localStorage if available
+    const cached = localStorage.getItem(`deployed_strategies_${user?.email}`);
+    return cached ? JSON.parse(cached) : [];
+  });
+
+  // Handle strategy activation/deactivation
+  const handleStrategyToggle = async (strategyName: string) => {
+    if (!user?.email) {
+      console.error('No user email found, cannot toggle strategy');
+      toast({
+        title: "Authentication Required",
+        description: "Please log in to activate strategies.",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    // Check if broker is added by checking sessionStorage
+    const brokerName = sessionStorage.getItem("broker_name");
+
+    if (!brokerName) {
+      toast({
+        title: "Broker Required",
+        description: "Please add your Broker first before activating strategies.",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    try {
+      const baseUrl = "http://localhost:8000";
+      // Create URL with query parameters for the API
+      const url = new URL('/api/add-strategy', baseUrl);
+      
+      // Add the query parameters
+      url.searchParams.append('email', user.email);
+      url.searchParams.append('strategy_name', strategyName);
+      
+      console.log('Sending request to:', url.toString());
+      
+      const response = await fetch(url.toString(), {
+        method: 'POST',
+        headers: {
+          'Accept': 'application/json',
+          'Content-Type': 'application/json'
+        },
+        credentials: 'include'
+      });
+
+      if (!response.ok) {
+        throw new Error(`Server responded with status: ${response.status}`);
+      }
+
+      const result = await response.json();
+      console.log('Strategy toggle result:', result);
+      
+      // Immediately update the deployedStrategyNames state
+      if (deployedStrategyNames.includes(strategyName)) {
+        // If it was already deployed, remove it
+        const updatedNames = deployedStrategyNames.filter(name => name !== strategyName);
+        setDeployedStrategyNames(updatedNames);
+        
+        // Update localStorage
+        if (user?.email) {
+          localStorage.setItem(`deployed_strategies_${user.email}`, JSON.stringify(updatedNames));
+        }
+        
+        // Show success message for deactivation
+        toast({
+          title: "Strategy Deactivated",
+          description: `Successfully removed strategy: ${strategyName}`,
+          variant: "default"
+        });
+      } else {
+        // If it wasn't deployed, add it
+        const updatedNames = [...deployedStrategyNames, strategyName];
+        setDeployedStrategyNames(updatedNames);
+        
+        // Update localStorage
+        if (user?.email) {
+          localStorage.setItem(`deployed_strategies_${user.email}`, JSON.stringify(updatedNames));
+        }
+        
+        // Show success message for activation
+        toast({
+          title: "Strategy Activated",
+          description: `Successfully added strategy: ${strategyName}`,
+          variant: "default"
+        });
+      }
+
+      // Refetch both queries to update the UI
+      query.refetch();
+      deployedStrategiesQuery.refetch();
+
+    } catch (error) {
+      console.error('Error toggling strategy:', error);
+      toast({
+        title: "Activation Failed",
+        description: error instanceof Error ? error.message : "Failed to activate strategy. Please try again.",
+        variant: "destructive"
+      });
+    }
+  };
+
   // Fetch strategies based on view type
   const queryOptions = {
-    queryKey: [viewType === "deployed" ? "deployed-strategies" : "strategies", user?.email] as const,
+    queryKey: [
+      viewType === "deployed" ? "deployed-strategies" : "strategies",
+      user?.email
+    ] as const,
     queryFn: async (): Promise<Array<Record<string, any>>> => {
       console.log('Fetching strategies with viewType:', viewType);
-      
+
       if (viewType === "deployed") {
         if (!user?.email) {
           console.log('No user email found, skipping deployed strategies fetch');
           return [];
         }
-        
+
         try {
           // First check if we have a valid API URL
           const baseUrl = "http://localhost:8000";
           if (!baseUrl) {
             throw new Error('API base URL is not configured');
           }
-          
+
           const url = new URL('/api/deployed-strategies', baseUrl);
           url.searchParams.append('email', user.email);
           console.log('Fetching deployed strategies from:', url.toString());
-          
+
           const response = await fetch(url.toString(), {
             headers: {
               'Accept': 'application/json',
@@ -57,9 +164,9 @@ export default function Strategies() {
             },
             credentials: 'include' // Include cookies if needed
           });
-          
+
           console.log('Deployed strategies response status:', response.status);
-          
+
           // Check content type before parsing
           const contentType = response.headers.get('content-type');
           if (!contentType || !contentType.includes('application/json')) {
@@ -67,27 +174,18 @@ export default function Strategies() {
             console.error('Expected JSON but got:', text.substring(0, 200)); // Log first 200 chars
             throw new Error(`Expected JSON response but got ${contentType}`);
           }
-          
+
           const deployedStrategies = await response.json();
-          
+
           if (!Array.isArray(deployedStrategies)) {
             console.error('Expected array but got:', deployedStrategies);
             throw new Error('Invalid response format: expected array of strategies');
           }
-          
+
           console.log('Fetched deployed strategies:', deployedStrategies);
-          
-          // Format the deployed strategies to match the expected format
-          return deployedStrategies.map((strategyName: string, index: number) => ({
-            id: `deployed-${index}`,
-            name: strategyName,
-            config: {
-              instruments: [{ name: strategyName.split('_').pop() || 'N/A' }],
-              startTime: '09:15',
-              endTime: '15:30',
-              segmentType: 'CRYPTO',
-              strategyType: strategyName.split('_')[0] || 'Strategy'
-            },
+
+          return deployedStrategies.map((strategy: Strategy) => ({
+            ...strategy,
             isDeployed: true
           }));
         } catch (err) {
@@ -98,16 +196,16 @@ export default function Strategies() {
         try {
           const url = new URL('/api/strategies', "http://localhost:8000");
           console.log('Fetching all strategies from:', url.toString());
-          
+
           const response = await fetch(url.toString());
           console.log('All strategies response status:', response.status);
-          
+
           if (!response.ok) {
             const errorText = await response.text();
             console.error('All strategies error:', errorText);
             throw new Error('Failed to fetch strategies');
           }
-          
+
           const data = await response.json();
           console.log('Fetched all strategies:', data);
           return data;
@@ -121,25 +219,75 @@ export default function Strategies() {
   };
 
   // Add event listeners separately
-  const query = useQuery<Array<Record<string, any>>, Error>(queryOptions);
-  
+  const query = useQuery<Array<Strategy>, Error>(queryOptions);
+
+  // Query to get deployed strategies to check which strategies are already deployed
+  const deployedStrategiesQuery = useQuery<Array<Strategy>, Error>({
+    queryKey: ['deployed-strategies-check', user?.email] as const,
+    queryFn: async (): Promise<Array<Strategy>> => {
+      if (!user?.email) {
+        return [];
+      }
+
+      try {
+        const baseUrl = "http://localhost:8000";
+        const url = new URL('/api/deployed-strategies', baseUrl);
+        url.searchParams.append('email', user.email);
+        
+        const response = await fetch(url.toString(), {
+          headers: {
+            'Accept': 'application/json',
+            'Content-Type': 'application/json'
+          },
+          credentials: 'include'
+        });
+
+        if (!response.ok) {
+          throw new Error(`Failed to fetch deployed strategies: ${response.status}`);
+        }
+
+        const data = await response.json();
+        return data;
+      } catch (err) {
+        console.error('Error fetching deployed strategies for check:', err);
+        return [];
+      }
+    },
+    enabled: !!user?.email
+  });
+
   useEffect(() => {
     if (query.error) {
       console.error('Query error:', query.error);
     }
     console.log('Query settled - data:', query.data, 'error:', query.error);
   }, [query.data, query.error]);
-  
+
+  // Update the list of deployed strategy names whenever deployedStrategiesQuery data changes
+  useEffect(() => {
+    if (deployedStrategiesQuery.data) {
+      const names = deployedStrategiesQuery.data.map(strategy => strategy.name);
+      setDeployedStrategyNames(names);
+      
+      // Save to localStorage for persistence across reloads
+      if (user?.email) {
+        localStorage.setItem(`deployed_strategies_${user.email}`, JSON.stringify(names));
+      }
+      
+      console.log('Deployed strategy names:', names);
+    }
+  }, [deployedStrategiesQuery.data, user?.email]);
+
   const { data: strategies, isLoading, error } = query;
 
-  console.log('Current state:', { 
-    strategies, 
-    isLoading, 
-    error, 
-    viewType, 
-    userEmail: user?.email 
+  console.log('Current state:', {
+    strategies,
+    isLoading,
+    error,
+    viewType,
+    userEmail: user?.email
   });
-  
+
 
   // Mock data for charts
   const mockChartData = [
@@ -157,39 +305,16 @@ export default function Strategies() {
     { month: "Mar", value: 48000 },
     { month: "Apr", value: 55000 },
   ];
-  
-  // Format strategy name for display
-  const formatStrategyName = (name: string) => {
-    return name
-      .split('_')
-      .map(word => {
-        if (word === 'SPT') return 'Spot';
-        if (word === 'EMA') return 'EMA';
-        if (word === 'CROSS') return 'Crossover';
-        if (word === 'FRAC') return 'Fractal';
-        if (word.endsWith('USDT')) return word.replace('USDT', '');
-        return word;
-      })
-      .join(' ');
+
+  // Format date for display
+  const formatDate = (dateString: string) => {
+    return new Date(dateString).toLocaleDateString('en-US', {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric'
+    });
   };
-  
-  // Get strategy type from name
-  const getStrategyType = (name: string) => {
-    if (name.startsWith('EMA_CROSS')) return 'EMA Crossover';
-    if (name.startsWith('FRAC_SPT')) return 'Fractal Spot';
-    return 'Strategy';
-  };
-  
-  // Get instrument from strategy name
-  const getInstrument = (name: string) => {
-    const parts = name.split('_');
-    const symbol = parts[parts.length - 1];
-    if (symbol.endsWith('USDT')) {
-      return symbol.replace('USDT', '/USDT');
-    }
-    return symbol;
-  };
-  
+
   // Render error message if there's an error
   if (error) {
     return (
@@ -227,10 +352,10 @@ export default function Strategies() {
   return (
     <div className="flex min-h-screen bg-neutral-50">
       <Sidebar />
-      
+
       <div className="flex-1 md:ml-64">
         <Header />
-        
+
         <main className="p-4 md:p-6">
           <div className="mb-6">
             <div className="flex justify-between items-center">
@@ -246,104 +371,110 @@ export default function Strategies() {
               )}
             </div>
           </div>
-          
+
           <div className="mb-6">
             <div className="inline-flex rounded-md shadow-sm bg-neutral-100 p-1" role="group">
               <Button
                 variant={viewType === "all" ? "secondary" : "ghost"}
                 onClick={() => setViewType("all")}
-                className={viewType === "all" ? "text-white" : "text-neutral-700"}
+                className={viewType === "all" ? "text-white" : "text-neutral-700 m-2"}
               >
                 All Strategies
               </Button>
               <Button
                 variant={viewType === "deployed" ? "secondary" : "ghost"}
                 onClick={() => setViewType("deployed")}
-                className={viewType === "deployed" ? "text-white" : "text-neutral-700"}
+                className={viewType === "deployed" ? "text-white" : "text-neutral-700 m-2"}
               >
                 Deployed Strategies
               </Button>
               <Button
                 variant={viewType === "marketplace" ? "secondary" : "ghost"}
                 onClick={() => setViewType("marketplace")}
-                className={viewType === "marketplace" ? "text-white" : "text-neutral-700"}
+                className={viewType === "marketplace" ? "text-white" : "text-neutral-700 m-2"}
               >
                 Marketplace
               </Button>
             </div>
           </div>
-          
+
           {isLoading ? (
             <div className="text-center py-12">Loading {viewType === 'deployed' ? 'deployed ' : ''}strategies...</div>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
               {Array.isArray(strategies) && strategies.length > 0 ? (
-                strategies.map((strategy: any, index: number) => {
-                  const displayName = formatStrategyName(strategy.name);
-                  const strategyType = getStrategyType(strategy.name);
-                  const instrument = getInstrument(strategy.name);
-                  
-                  return (
-                    <Card key={strategy.id} className="overflow-hidden border-l-4 border-blue-500 hover:shadow-md transition-shadow">
-                      <CardContent className="p-5">
-                        <div className="flex justify-between items-start mb-2">
-                          <h3 className="text-lg font-semibold">{displayName}</h3>
-                          {strategy.isDeployed && (
-                            <span className="bg-green-100 text-green-800 text-xs px-2 py-1 rounded-full">
-                              Deployed
-                            </span>
-                          )}
+                strategies.map((strategy, index: number) => (
+                  <Card key={strategy._id} className="overflow-hidden border-l-4 border-blue-500 hover:shadow-md transition-shadow">
+                    <CardContent className="p-5">
+                      <div className="flex justify-between items-start mb-2">
+                        <h3 className="text-lg font-semibold">{strategy.name}</h3>
+                        <span className={`text-xs px-2 py-1 rounded-full ${strategy.is_active ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'}`}>
+                          {strategy.is_active ? 'Active' : 'Inactive'}
+                        </span>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-3 mb-4">
+                        <div>
+                          <div className="text-xs text-neutral-500">Type:</div>
+                          <div className="text-sm font-medium">{strategy.type}</div>
                         </div>
-                        
-                        <div className="grid grid-cols-2 gap-3 mb-4">
-                          <div>
-                            <div className="text-xs text-neutral-500">Strategy Type:</div>
-                            <div className="text-sm font-medium">{strategyType}</div>
-                          </div>
-                          <div>
-                            <div className="text-xs text-neutral-500">Instrument:</div>
-                            <div className="text-sm font-medium">{instrument}</div>
-                          </div>
+                        <div>
+                          <div className="text-xs text-neutral-500">Leverage:</div>
+                          <div className="text-sm font-medium">{strategy.leverage}</div>
                         </div>
-                        
-                        <div className="h-28 mb-4">
-                          <ResponsiveContainer width="100%" height="100%">
-                            <AreaChart data={mockChartData}>
-                              <defs>
-                                <linearGradient id={`gradient-${index}`} x1="0" y1="0" x2="0" y2="1">
-                                  <stop offset="5%" stopColor="hsl(var(--primary))" stopOpacity={0.3} />
-                                  <stop offset="95%" stopColor="hsl(var(--primary))" stopOpacity={0} />
-                                </linearGradient>
-                              </defs>
-                              <Area 
-                                type="monotone" 
-                                dataKey="value"
-                                stroke="hsl(var(--primary))"
-                                fillOpacity={1}
-                                fill={`url(#gradient-${index})`}
-                              />
-                              <XAxis dataKey="month" hide={true} />
-                              <YAxis hide={true} domain={['dataMin - 10000', 'dataMax + 10000']} />
-                              <Tooltip />
-                            </AreaChart>
-                          </ResponsiveContainer>
+                        <div>
+                          <div className="text-xs text-neutral-500">Margin:</div>
+                          <div className="text-sm font-medium">${strategy.margin}</div>
                         </div>
-                        
-                        <Button 
-                          variant={strategy.isDeployed ? "default" : "outline"}
-                          className="w-full"
-                        >
-                          {strategy.isDeployed ? 'View Details' : 'Deploy'}
+                        <div>
+                          <div className="text-xs text-neutral-500">Created:</div>
+                          <div className="text-sm font-medium">{formatDate(strategy.created_at)}</div>
+                        </div>
+                      </div>
+
+                      <div className="h-28 mb-4">
+                        <ResponsiveContainer width="100%" height="100%">
+                          <AreaChart data={mockChartData}>
+                            <defs>
+                              <linearGradient id={`gradient-${index}`} x1="0" y1="0" x2="0" y2="1">
+                                <stop offset="5%" stopColor="hsl(var(--primary))" stopOpacity={0.3} />
+                                <stop offset="95%" stopColor="hsl(var(--primary))" stopOpacity={0} />
+                              </linearGradient>
+                            </defs>
+                            <Area
+                              type="monotone"
+                              dataKey="value"
+                              stroke="hsl(var(--primary))"
+                              fillOpacity={1}
+                              fill={`url(#gradient-${index})`}
+                            />
+                            <XAxis dataKey="month" hide={true} />
+                            <YAxis hide={true} domain={['dataMin - 10000', 'dataMax + 10000']} />
+                            <Tooltip />
+                          </AreaChart>
+                        </ResponsiveContainer>
+                      </div>
+
+                      <div className="flex gap-2">
+                        <Button variant="outline" className="flex-1">
+                          View Details
                         </Button>
-                      </CardContent>
-                    </Card>
-                  );
-                })
+                        <Button
+                          variant="default"
+                          className="flex-1"
+                          onClick={() => handleStrategyToggle(strategy.name)}
+                        >
+                          {deployedStrategyNames.includes(strategy.name) ? 'Deactivate' : 'Activate'}
+                        </Button>
+                      </div>
+                    </CardContent>
+                  </Card>
+                ))
               ) : (
                 <div className="col-span-full text-center py-12">
                   <p className="text-neutral-500">
-                    {viewType === "deployed" 
-                      ? "No deployed strategies found. Deploy a strategy from the 'All Strategies' tab to get started." 
+                    {viewType === "deployed"
+                      ? "No deployed strategies found. Deploy a strategy from the 'All Strategies' tab to get started."
                       : "No strategies available"}
                   </p>
                 </div>

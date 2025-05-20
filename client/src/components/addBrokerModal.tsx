@@ -41,7 +41,7 @@ const AddBrokerModal: React.FC<AddBrokerModalProps> = ({ isOpen, onClose, onSucc
         broker_id: brokerId,
         app_name: appName,
         api_key: apiKey,
-        api_secret_key: apiSecretKey,
+        secret_key: apiSecretKey,
         email: user?.email || '',
         broker_name: "BingX"
       };
@@ -56,7 +56,7 @@ const AddBrokerModal: React.FC<AddBrokerModalProps> = ({ isOpen, onClose, onSucc
         broker_id: brokerId,
         app_name: appName,
         api_key: apiKey,
-        api_secret_key: apiSecretKey
+        secret_key: apiSecretKey
       });
       
       if (addBrokerResponse?.success) {
@@ -69,7 +69,7 @@ const AddBrokerModal: React.FC<AddBrokerModalProps> = ({ isOpen, onClose, onSucc
           broker_id: brokerId,
           app_name: appName,
           api_key: apiKey,
-          api_secret_key: apiSecretKey
+          secret_key: apiSecretKey
         
         });
         
@@ -80,7 +80,7 @@ const AddBrokerModal: React.FC<AddBrokerModalProps> = ({ isOpen, onClose, onSucc
           });
           onClose();
           if (onSuccess) onSuccess();
-          onClose();
+          window.location.reload(); // Reload the page to reflect changes
         } else {
           toast({
             title: "Warning",
