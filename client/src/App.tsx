@@ -21,17 +21,17 @@ import Visitor from "@/pages/Visitor";
 
 function ProtectedRoute({ component: Component }: { component: React.ComponentType }) {
   const { user, isLoading } = useAuth();
-  
+
   if (isLoading) {
     return <div className="flex h-screen items-center justify-center">Loading...</div>;
   }
-  
+
   if (!user) {
     // Redirect to login if not authenticated
     window.location.href = "/visitor";
     return null;
   }
-  
+
   return <Component />;
 }
 

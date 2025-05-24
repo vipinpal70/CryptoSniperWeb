@@ -1,14 +1,17 @@
 import React from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/lib/auth";
+import { useEffect, useRef } from "react";
 import Sidebar from "@/components/Sidebar";
 import Header from "@/components/Header";
+import { useState } from 'react';
+import { Search } from 'lucide-react';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Search } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import Lowheader from "@/components/Lowheader";
+import { table } from "console";
 
 interface PositionRowProps {
   symbol: string;
@@ -23,25 +26,16 @@ interface PositionRowProps {
 }
 
 // Define PositionRow component before it's used
-function PositionRow({
-  symbol,
-  side,
-  size,
-  entryPrice,
-  markPrice,
-  pnl,
-  pnlPercent,
-  leverage,
-  liquidationPrice
-}: PositionRowProps) {
+function PositionRow({ symbol, side, size, entryPrice, markPrice, pnl, pnlPercent, leverage, liquidationPrice }: PositionRowProps) {
   const isProfit = parseFloat(pnl) >= 0;
   const pnlClass = isProfit ? 'text-green-500' : 'text-red-500';
   const pnlBgClass = isProfit ? 'bg-green-50' : 'bg-red-50';
   const sideClass = side === 'LONG' ? 'text-green-500' : 'text-red-500';
-  
+
   return (
     <tr className="border-t hover:bg-gray-50">
       <td className="py-4 px-4">
+        <div className="w-1 h-8 bg-blue-500 mr-2 rounded-sm"></div>
         <div className="font-medium">{symbol}</div>
         <div className="text-xs text-gray-500">Isolated {leverage}x</div>
       </td>
@@ -83,55 +77,163 @@ function PositionRow({
   );
 }
 
+
+function PositionRow_1({ position }: { position: any }) {
+  // Safely check if unrealizedProfit is positive
+  const unrealizedProfit = parseFloat(position.unrealizedProfit || '0');
+  const isUnrealisedPositive = unrealizedProfit >= 0;
+
+  // For realized profit, assume 0 if not available
+  const realizedProfit = parseFloat(position.realizedProfit || '0');
+  const isRealisedPositive = realizedProfit >= 0;
+
+  // Set colors based on profit/loss
+  const unrealisedColor = isUnrealisedPositive ? 'text-green-600' : 'text-red-600';
+  const realisedColor = isRealisedPositive ? 'text-green-600' : 'text-red-600';
+  const unrealisedBgColor = isUnrealisedPositive ? 'bg-green-50' : 'bg-red-50';
+  const realisedBgColor = isRealisedPositive ? 'bg-green-50' : 'bg-red-50';
+
+  // Format the values for display
+  const formattedUnrealizedProfit = `${isUnrealisedPositive ? '+' : ''}${unrealizedProfit.toFixed(4)} USDT`;
+  const formattedRealizedProfit = `${isRealisedPositive ? '+' : ''}${realizedProfit.toFixed(4)} USDT`;
+
+  // Calculate percentage if possible, otherwise use a default
+  const pnlRatio = parseFloat(position.pnlRatio || '0') * 100;
+  const formattedPnlRatio = `${isUnrealisedPositive ? '+' : ''}${pnlRatio.toFixed(2)}%`;
+
+  return (
+    <tr key={position.positionId} className="border-t border-gray-100">
+      <td className="py-3 px-4">
+        <div className="flex items-center">
+          <div className="w-1 h-8 bg-blue-500 mr-2 rounded-sm"></div>
+          <div>
+            <div>{position.symbol}</div>
+            <div className="text-sm text-gray-500">Isolated {position.leverage}x</div>
+          </div>
+        </div>
+      </td>
+      <td className="py-3 px-4">
+        <div className="flex items-center">
+          <div className="flex flex-col">
+            <span className="font-medium text-gray-700">{position.positionSide}</span>
+          </div>
+        </div>
+      </td>
+      <td className="py-3 px-4">{position.positionAmt} {position.symbol.split('USDT')[0]}</td>
+      <td className="py-3 px-4">{position.avgPrice}</td>
+      <td className="py-3 px-4">{position.markPrice}</td>
+      <td className="py-3 px-4">
+        <div className="">{formattedUnrealizedProfit}</div> {/* {unrealisedColor} */}
+        <div className={`text-xs px-2 py-0.5 rounded-sm inline-block ${unrealisedBgColor} ${unrealisedColor}`}>
+          {formattedPnlRatio}
+        </div>
+      </td>
+      <td className="py-3 px-4">
+        <div className="">{formattedRealizedProfit}</div> {/* {realisedColor} */}
+        <div className={`text-xs px-2 py-0.5 rounded-sm inline-block ${realisedBgColor} ${realisedColor}`}>
+          {isRealisedPositive ? '+0.00%' : '-0.00%'}
+        </div>
+      </td>
+    </tr>
+  );
+}
+
+
 export default function Positions() {
   const { user } = useAuth();
 
+  const queryClient = useQueryClient();
+  const pollingIntervalRef = useRef<NodeJS.Timeout>();
+
+  const fetchPositions = async () => {
+    if (!user?.email) return [];
+    const BASE_URL = import.meta.env.VITE_API_URL;
+
+    const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+
+    if (!session || sessionError) {
+      console.error('No active session or session error:', sessionError);
+      throw new Error(sessionError?.message || "No active session");
+    }
+
+    function buildApiUrl(path: string): string {
+      // Remove any leading slashes from the path to prevent double slashes
+      const cleanPath = path.replace(/^\/+/, '');
+      const BASE_URL = import.meta.env.VITE_API_URL || '';
+      
+      if (BASE_URL.startsWith('http')) {
+        // If base URL is a full URL, ensure it ends with exactly one slash
+        const base = BASE_URL.endsWith('/') ? BASE_URL.slice(0, -1) : BASE_URL;
+        return `${base}/${cleanPath}`;
+      }
+      
+      // For relative URLs, ensure BASE_URL starts with exactly one slash
+      const base = BASE_URL.startsWith('/') ? BASE_URL : `/${BASE_URL}`;
+      const cleanBase = base.endsWith('/') ? base.slice(0, -1) : base;
+      return `${window.location.origin}${cleanBase}/${cleanPath}`;
+    }
+
+    const url = buildApiUrl(`/api/live-positions?email=${encodeURIComponent(user.email)}`);
+    const headers = {
+      "accept": "application/json",
+      "Authorization": `Bearer ${session.access_token}`,
+    };
+
+    const response = await fetch(url, {
+      method: "POST",
+      headers,
+      credentials: 'include', // Important for cookies
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.detail || "Failed to fetch positions");
+    }
+
+    return response.json();
+  };
+
   const { data: positions = [], isLoading, error } = useQuery({
     queryKey: ["positions", user?.email],
-    queryFn: async () => {
-      if (!user?.email) return [];
-      
-      const { data: { session }, error: sessionError } = await supabase.auth.getSession();
-      
-      // Debug logs
-      console.log('Session data:', session);
-      console.log('Session error:', sessionError);
-      
-      if (!session || sessionError) {
-        console.error('No active session or session error:', sessionError);
-        throw new Error(sessionError?.message || "No active session");
-      }
-
-      const url = `http://localhost:8000/api/positions?email=${encodeURIComponent(user.email)}`;
-      const headers = {
-        "accept": "application/json",
-        "Authorization": `Bearer ${session.access_token}`,
-      };
-      
-      console.log('Making request to:', url);
-      console.log('With headers:', headers);
-      
-      const response = await fetch(url, {
-        method: "POST",
-        headers,
-      });
-      
-      console.log('Response status:', response.status);
-
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        throw new Error(errorData.detail || "Failed to fetch positions");
-      }
-
-      return response.json();
-    },
+    queryFn: fetchPositions,
     enabled: !!user?.email,
-    staleTime: 30000, // Cache for 30 seconds
+    refetchOnWindowFocus: false,
+    staleTime: 0, // Always consider data stale to ensure refetching
   });
+
+  // Set up polling when there are positions
+  useEffect(() => {
+    if (positions && positions.length > 0) {
+      // Clear any existing interval
+      if (pollingIntervalRef.current) {
+        clearInterval(pollingIntervalRef.current);
+      }
+
+      // Set up new interval
+      pollingIntervalRef.current = setInterval(() => {
+        queryClient.invalidateQueries({ queryKey: ["positions", user?.email] });
+      }, 2000);
+    } else if (pollingIntervalRef.current) {
+      // Clear interval when there are no positions
+      clearInterval(pollingIntervalRef.current);
+    }
+
+    // Cleanup interval on component unmount
+    return () => {
+      if (pollingIntervalRef.current) {
+        clearInterval(pollingIntervalRef.current);
+      }
+    };
+  }, [positions, user?.email, queryClient]);
 
   const filteredPositions = React.useMemo(() => {
     return Array.isArray(positions) ? positions : [];
   }, [positions]);
+
+
+
+  const [selectedExchange, setSelectedExchange] = useState<string>("BingX");
+  const [searchTerm, setSearchTerm] = useState<string>("");
 
   return (
     <div className="flex min-h-screen bg-neutral-50">
@@ -139,68 +241,74 @@ export default function Positions() {
 
       <div className="flex-1 md:ml-64">
         <Header />
-        <Lowheader/>
+        <Lowheader />
 
-        <main className="p-2 md:p-4">
-          {/* <div className="mb-6">
+        <main className="flex-1 overflow-y-auto p-2 md:p-4">
+          <div className="mb-6">
             <h1 className="text-2xl font-semibold">Positions</h1>
-          </div> */}
+          </div>
 
-          <Card className="overflow-hidden">
-            {/* <div className="p-4 border-b border-neutral-200 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-            </div> */}
+          <div className="flex justify-between mb-6">
+            <div className="w-64">
+              <Select value={selectedExchange} onValueChange={setSelectedExchange} disabled>
+                <SelectTrigger>
+                  <SelectValue placeholder="All Exchanges" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="All Exchanges">All Exchanges</SelectItem>
+                  <SelectItem value="Bybit">Bybit</SelectItem>
+                  <SelectItem value="Binance">Binance</SelectItem>
+                  <SelectItem value="BingX">BingX</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
 
-            {isLoading ? (
-              <div className="p-8 text-center">Loading positions...</div>
-            ) : filteredPositions.length === 0 ? (
-              <div className="p-8 text-center">No positions found</div>
-            ) : (
-              <div className="p-6">
-                <h1 className="text-xl font-bold mb-6">Positions</h1>
-
-                {/* Table */}
-                <div className="border rounded-lg overflow-hidden">
-                  <table className="w-full">
-                    <thead className="bg-[#B3C8FF]">
-                      <tr>
-                        <th className="text-left py-3 px-4 font-medium">Contract</th>
-                        <th className="text-left py-3 px-4 font-medium">Side</th>
-                        <th className="text-left py-3 px-4 font-medium">Value</th>
-                        <th className="text-left py-3 px-4 font-medium">Entry price</th>
-                        <th className="text-left py-3 px-4 font-medium">Mark price</th>
-                        <th className="text-left py-3 px-4 font-medium">Unrealised P&L (%)</th>
-                        <th className="text-left py-3 px-4 font-medium">Realised P&L (%)</th>
-                      </tr>
-                    </thead>
-                      <tbody>
-                      {Array.isArray(positions) && positions.length > 0 ? (
-                        positions.map((pos: any) => (
-                          <PositionRow 
-                            key={pos.positionId}
-                            symbol={pos.symbol}
-                            side={pos.positionSide}
-                            size={pos.positionAmt}
-                            entryPrice={pos.avgPrice}
-                            markPrice={pos.markPrice}
-                            pnl={pos.unrealizedProfit}
-                            pnlPercent={pos.pnlRatio}
-                            leverage={pos.leverage}
-                            liquidationPrice={pos.liquidationPrice}
-                          />
-                        ))
-                      ) : (
-                        <tr>
-                          <td colSpan={7} className="py-4 text-center text-gray-500">
-                            No open positions found
-                          </td>
-                        </tr>
-                      )}
-                    </tbody>
-                  </table>
-                </div>
+            <div className="relative w-96">
+              {/* <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                <Search className="h-5 w-5 text-gray-400" />
               </div>
-            )}
-          </Card>
+              <input
+                type="text"
+                className="block w-full pl-10 pr-4 py-2 rounded-lg border border-gray-300 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                placeholder="Search..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+              /> */}
+            </div>
+          </div>
+
+          <div className="bg-white rounded-lg shadow overflow-hidden">
+            <table className="w-full">
+              <thead>
+                <tr className="bg-blue-50 text-gray-600 text-left">
+                  <th className="py-3 px-4 font-medium">Contract</th>
+                  <th className="py-3 px-4 font-medium">Position</th>
+                  <th className="py-3 px-4 font-medium">Value</th>
+                  <th className="py-3 px-4 font-medium">Entry price</th>
+                  <th className="py-3 px-4 font-medium">Mark price</th>
+                  <th className="py-3 px-4 font-medium">Unrealised P&L (%)</th>
+                  <th className="py-3 px-4 font-medium">Realised P&L (%)</th>
+                </tr>
+              </thead>
+              <tbody>
+
+                {Array.isArray(positions) && positions.length > 0 ? (
+                  positions.map((pos: any) => (
+                    <PositionRow_1
+                      position={pos}
+                    />
+                  ))
+                ) : (
+                  <tr>
+                    <td colSpan={7} className="py-4 px-4 text-center">
+                      No open positions found
+                    </td>
+                  </tr>
+                )}
+
+              </tbody>
+            </table>
+          </div>
         </main>
       </div>
     </div>

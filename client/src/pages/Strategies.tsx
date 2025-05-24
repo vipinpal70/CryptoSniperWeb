@@ -7,10 +7,16 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer } from "recharts";
 import { useToast } from "@/hooks/use-toast";
+import PerformanceCard, { PerformanceData } from "@/components/PerformanceCard";
 
 type StrategyViewType = "all" | "deployed" | "marketplace";
 
 interface Strategy {
+  MaxDrawdown: number;
+  WinRate: number;
+  Returns: number;
+  TotalTrades: number;
+  description: string;
   _id: string;
   name: string;
   type: string;
@@ -19,17 +25,43 @@ interface Strategy {
   created_at: string;
   updated_at: string;
   is_active: boolean;
+  growth?: string;
+  win_rate?: number;
+  total_trades: string;
+  start_date: string;
+  BTC?: boolean;
+  ETH?: boolean;
+  SOL?: boolean;
 }
 
 export default function Strategies() {
   const { user } = useAuth();
   const { toast } = useToast();
   const [viewType, setViewType] = useState<StrategyViewType>("all");
+  const [refreshKey, setRefreshKey] = useState(0); // Add this line for force refresh
   const [deployedStrategyNames, setDeployedStrategyNames] = useState<string[]>(() => {
     // Initialize from localStorage if available
     const cached = localStorage.getItem(`deployed_strategies_${user?.email}`);
     return cached ? JSON.parse(cached) : [];
   });
+
+    function buildApiUrl(path: string): string {
+      // Remove any leading slashes from the path to prevent double slashes
+      const cleanPath = path.replace(/^\/+/, '');
+      const BASE_URL = import.meta.env.VITE_API_URL || '';
+      
+      if (BASE_URL.startsWith('http')) {
+        // If base URL is a full URL, ensure it ends with exactly one slash
+        const base = BASE_URL.endsWith('/') ? BASE_URL.slice(0, -1) : BASE_URL;
+        return `${base}/${cleanPath}`;
+      }
+      
+      // For relative URLs, ensure BASE_URL starts with exactly one slash
+      const base = BASE_URL.startsWith('/') ? BASE_URL : `/${BASE_URL}`;
+      const cleanBase = base.endsWith('/') ? base.slice(0, -1) : base;
+      return `${window.location.origin}${cleanBase}/${cleanPath}`;
+    }
+
 
   // Handle strategy activation/deactivation
   const handleStrategyToggle = async (strategyName: string) => {
@@ -56,17 +88,19 @@ export default function Strategies() {
     }
 
     try {
-      const baseUrl = "http://localhost:8000";
+      const baseUrl = buildApiUrl('/add-strategy');
       // Create URL with query parameters for the API
-      const url = new URL('/api/add-strategy', baseUrl);
+      const apiUrl = baseUrl.startsWith('http')
+        ? new URL(baseUrl)
+        : new URL(`${window.location.origin}${baseUrl}`);
       
-      // Add the query parameters
-      url.searchParams.append('email', user.email);
-      url.searchParams.append('strategy_name', strategyName);
-      
-      console.log('Sending request to:', url.toString());
-      
-      const response = await fetch(url.toString(), {
+      // Add query parameters
+      apiUrl.searchParams.append('email', user.email);
+      apiUrl.searchParams.append('strategy_name', strategyName);
+
+      console.log('Sending request to:', apiUrl.toString());
+
+      const response = await fetch(apiUrl.toString(), {
         method: 'POST',
         headers: {
           'Accept': 'application/json',
@@ -81,18 +115,18 @@ export default function Strategies() {
 
       const result = await response.json();
       console.log('Strategy toggle result:', result);
-      
+
       // Immediately update the deployedStrategyNames state
       if (deployedStrategyNames.includes(strategyName)) {
         // If it was already deployed, remove it
         const updatedNames = deployedStrategyNames.filter(name => name !== strategyName);
         setDeployedStrategyNames(updatedNames);
-        
+
         // Update localStorage
         if (user?.email) {
           localStorage.setItem(`deployed_strategies_${user.email}`, JSON.stringify(updatedNames));
         }
-        
+
         // Show success message for deactivation
         toast({
           title: "Strategy Deactivated",
@@ -103,12 +137,12 @@ export default function Strategies() {
         // If it wasn't deployed, add it
         const updatedNames = [...deployedStrategyNames, strategyName];
         setDeployedStrategyNames(updatedNames);
-        
+
         // Update localStorage
         if (user?.email) {
           localStorage.setItem(`deployed_strategies_${user.email}`, JSON.stringify(updatedNames));
         }
-        
+
         // Show success message for activation
         toast({
           title: "Strategy Activated",
@@ -137,7 +171,7 @@ export default function Strategies() {
       viewType === "deployed" ? "deployed-strategies" : "strategies",
       user?.email
     ] as const,
-    queryFn: async (): Promise<Array<Record<string, any>>> => {
+    queryFn: async (): Promise<Array<Strategy>> => {
       console.log('Fetching strategies with viewType:', viewType);
 
       if (viewType === "deployed") {
@@ -148,16 +182,17 @@ export default function Strategies() {
 
         try {
           // First check if we have a valid API URL
-          const baseUrl = "http://localhost:8000";
-          if (!baseUrl) {
+          let apiUrl = buildApiUrl('/api/deployed-strategies');
+          console.log('Using API URL:', apiUrl);
+          if (!apiUrl) {
             throw new Error('API base URL is not configured');
           }
 
-          const url = new URL('/api/deployed-strategies', baseUrl);
-          url.searchParams.append('email', user.email);
-          console.log('Fetching deployed strategies from:', url.toString());
+          
+          apiUrl += `?email=${encodeURIComponent(user.email)}`;
+          console.log('Fetching deployed strategies from:', apiUrl);
 
-          const response = await fetch(url.toString(), {
+          const response = await fetch(apiUrl, {
             headers: {
               'Accept': 'application/json',
               'Content-Type': 'application/json'
@@ -194,10 +229,11 @@ export default function Strategies() {
         }
       } else {
         try {
-          const url = new URL('/api/strategies', "http://localhost:8000");
-          console.log('Fetching all strategies from:', url.toString());
+          let apiUrl = buildApiUrl('/api/strategies');
+          
+          console.log('Fetching all strategies from:', apiUrl);
 
-          const response = await fetch(url.toString());
+          const response = await fetch(apiUrl);
           console.log('All strategies response status:', response.status);
 
           if (!response.ok) {
@@ -230,11 +266,10 @@ export default function Strategies() {
       }
 
       try {
-        const baseUrl = "http://localhost:8000";
-        const url = new URL('/api/deployed-strategies', baseUrl);
-        url.searchParams.append('email', user.email);
-        
-        const response = await fetch(url.toString(), {
+        let apiUrl = buildApiUrl('/api/deployed-strategies');
+        apiUrl += `?email=${encodeURIComponent(user.email)}`;
+
+        const response = await fetch(apiUrl, {
           headers: {
             'Accept': 'application/json',
             'Content-Type': 'application/json'
@@ -268,52 +303,50 @@ export default function Strategies() {
     if (deployedStrategiesQuery.data) {
       const names = deployedStrategiesQuery.data.map(strategy => strategy.name);
       setDeployedStrategyNames(names);
-      
+
       // Save to localStorage for persistence across reloads
       if (user?.email) {
         localStorage.setItem(`deployed_strategies_${user.email}`, JSON.stringify(names));
       }
-      
+
       console.log('Deployed strategy names:', names);
     }
   }, [deployedStrategiesQuery.data, user?.email]);
 
-  const { data: strategies, isLoading, error } = query;
+  // Get the raw data from the query
+  const { data: rawStrategies, isLoading, error } = query;
+
+  // Filter strategies based on the view type
+  const strategies = React.useMemo(() => {
+    if (!rawStrategies || !Array.isArray(rawStrategies)) return [];
+
+    if (viewType === "deployed") {
+      // For deployed view, show only deployed strategies
+      return rawStrategies.filter((strategy: Strategy) =>
+        deployedStrategyNames.includes(strategy.name)
+      );
+    } else if (viewType === "all") {
+      // For all view, show all strategies except deployed ones
+      return rawStrategies.filter((strategy: Strategy) =>
+        !deployedStrategyNames.includes(strategy.name)
+      );
+    } else {
+      // For marketplace view, also exclude deployed strategies
+      return rawStrategies.filter((strategy: Strategy) =>
+        !deployedStrategyNames.includes(strategy.name)
+      );
+    }
+  }, [rawStrategies, viewType, deployedStrategyNames]);
 
   console.log('Current state:', {
-    strategies,
+    rawStrategies,
+    filteredStrategies: strategies,
     isLoading,
     error,
     viewType,
-    userEmail: user?.email
+    userEmail: user?.email,
+    deployedStrategyNames
   });
-
-
-  // Mock data for charts
-  const mockChartData = [
-    { month: "Apr", value: 0 },
-    { month: "May", value: 35000 },
-    { month: "Jun", value: 25000 },
-    { month: "Jul", value: 60000 },
-    { month: "Aug", value: 40000 },
-    { month: "Sep", value: 45000 },
-    { month: "Oct", value: 50000 },
-    { month: "Nov", value: 35000 },
-    { month: "Dec", value: 55000 },
-    { month: "Jan", value: 45000 },
-    { month: "Feb", value: 52000 },
-    { month: "Mar", value: 48000 },
-    { month: "Apr", value: 55000 },
-  ];
-
-  // Format date for display
-  const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString('en-US', {
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric'
-    });
-  };
 
   // Render error message if there's an error
   if (error) {
@@ -373,100 +406,124 @@ export default function Strategies() {
           </div>
 
           <div className="mb-6">
-            <div className="inline-flex rounded-md shadow-sm bg-neutral-100 p-1" role="group">
+            <div className="inline-flex rounded-md shadow-sm bg-neutral-50 p-1" role="group">
               <Button
-                variant={viewType === "all" ? "secondary" : "ghost"}
+                variant="ghost"
                 onClick={() => setViewType("all")}
-                className={viewType === "all" ? "text-white" : "text-neutral-700 m-2"}
+                className={`px-4 py-2 m-4 text-sm font-medium ${viewType === "all"
+                  ? 'text-blue-600 border-b-2 border-blue-600'
+                  : 'text-gray-500 hover:text-gray-700'}`}
               >
                 All Strategies
               </Button>
               <Button
-                variant={viewType === "deployed" ? "secondary" : "ghost"}
+                variant="ghost"
                 onClick={() => setViewType("deployed")}
-                className={viewType === "deployed" ? "text-white" : "text-neutral-700 m-2"}
+                className={`px-4 py-2 m-4 text-sm font-medium ${viewType === "deployed"
+                  ? 'text-blue-600 border-b-2 border-blue-600'
+                  : 'text-gray-500 hover:text-gray-700'}`}
               >
                 Deployed Strategies
               </Button>
-              <Button
+              {/* <Button
                 variant={viewType === "marketplace" ? "secondary" : "ghost"}
                 onClick={() => setViewType("marketplace")}
                 className={viewType === "marketplace" ? "text-white" : "text-neutral-700 m-2"}
               >
                 Marketplace
-              </Button>
+              </Button> */}
             </div>
           </div>
 
           {isLoading ? (
             <div className="text-center py-12">Loading {viewType === 'deployed' ? 'deployed ' : ''}strategies...</div>
+          ) : (viewType === 'deployed' && !user?.email) ? (
+            <div className="text-center py-12">
+              <p className="text-neutral-500">Please log in to view deployed strategies.</p>
+            </div>
+          ) : viewType === "all" ? (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              {query.data?.map((strategy) => (
+                <PerformanceCard
+                  key={strategy._id}
+                  data={{
+                    _id: strategy._id,
+                    name: strategy.name,
+                    type: strategy.type,
+                    description: strategy.description,
+                    leverage: strategy.leverage,
+                    margin: strategy.margin,
+                    created_at: strategy.created_at,
+                    updated_at: strategy.updated_at,
+                    is_active: strategy.is_active,
+                    isDeployed: deployedStrategyNames.includes(strategy.name),
+                    BTC: strategy.BTC || false,
+                    ETH: strategy.ETH || false,
+                    SOL: strategy.SOL || false,
+                    TotalTrades: strategy.TotalTrades || 0,
+                    Returns: strategy.Returns || 0,
+                    WinRate: strategy.WinRate || 0,
+                    MaxDrawdown: strategy.MaxDrawdown || 0
+                  }}
+                  onDeploy={() => {
+                    // Force refresh the strategies list
+                    query.refetch();
+                    deployedStrategiesQuery.refetch();
+                  }}
+                />
+              ))}
+            </div>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
               {Array.isArray(strategies) && strategies.length > 0 ? (
                 strategies.map((strategy, index: number) => (
-                  <Card key={strategy._id} className="overflow-hidden border-l-4 border-blue-500 hover:shadow-md transition-shadow">
-                    <CardContent className="p-5">
+                  <Card key={strategy._id} className="rounded-3xl border p-5 shadow-sm hover:shadow-md transition-shadow">
+                    <CardContent className="p-0">
+                      {/* Header */}
                       <div className="flex justify-between items-start mb-2">
-                        <h3 className="text-lg font-semibold">{strategy.name}</h3>
-                        <span className={`text-xs px-2 py-1 rounded-full ${strategy.is_active ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'}`}>
-                          {strategy.is_active ? 'Active' : 'Inactive'}
+                        <div className="text-lg font-bold text-gray-900">{strategy.name}</div>
+                        <span className="text-xs font-semibold text-green-700 bg-green-100 px-2 py-1 rounded-full">
+                          +{strategy.Returns || '0'}%
                         </span>
                       </div>
 
-                      <div className="grid grid-cols-2 gap-3 mb-4">
+                      {/* Description */}
+                      <p className="text-sm text-gray-700 mb-3">
+                        {strategy.description}
+                      </p>
+
+                      {/* Win Rate */}
+                      <div className="text-sm font-semibold text-gray-800 mb-1 flex justify-between">
+                        <span>Win Rate</span>
+                        <span>{strategy.WinRate || '0'}%</span>
+                      </div>
+                      <div className="w-full h-2 bg-gray-200 rounded-full mb-4">
+                        <div
+                          className="h-2 bg-green-500 rounded-full"
+                          style={{ width: `${strategy.WinRate || 0}%` }}
+                        />
+                      </div>
+
+                      {/* Meta info */}
+                      <div className="grid grid-cols-2 gap-2 bg-gray-50 rounded-xl p-4 text-sm text-gray-700 mb-4">
                         <div>
-                          <div className="text-xs text-neutral-500">Type:</div>
-                          <div className="text-sm font-medium">{strategy.type}</div>
+                          <div className="text-gray-500">Max Drawdown</div>
+                          <div className="font-semibold">{strategy.MaxDrawdown || '0'}%</div>
                         </div>
                         <div>
-                          <div className="text-xs text-neutral-500">Leverage:</div>
-                          <div className="text-sm font-medium">{strategy.leverage}</div>
-                        </div>
-                        <div>
-                          <div className="text-xs text-neutral-500">Margin:</div>
-                          <div className="text-sm font-medium">${strategy.margin}</div>
-                        </div>
-                        <div>
-                          <div className="text-xs text-neutral-500">Created:</div>
-                          <div className="text-sm font-medium">{formatDate(strategy.created_at)}</div>
+                          <div className="text-gray-500">Total Trades:</div>
+                          <div className="font-semibold">{strategy.TotalTrades || '0'}</div>
                         </div>
                       </div>
 
-                      <div className="h-28 mb-4">
-                        <ResponsiveContainer width="100%" height="100%">
-                          <AreaChart data={mockChartData}>
-                            <defs>
-                              <linearGradient id={`gradient-${index}`} x1="0" y1="0" x2="0" y2="1">
-                                <stop offset="5%" stopColor="hsl(var(--primary))" stopOpacity={0.3} />
-                                <stop offset="95%" stopColor="hsl(var(--primary))" stopOpacity={0} />
-                              </linearGradient>
-                            </defs>
-                            <Area
-                              type="monotone"
-                              dataKey="value"
-                              stroke="hsl(var(--primary))"
-                              fillOpacity={1}
-                              fill={`url(#gradient-${index})`}
-                            />
-                            <XAxis dataKey="month" hide={true} />
-                            <YAxis hide={true} domain={['dataMin - 10000', 'dataMax + 10000']} />
-                            <Tooltip />
-                          </AreaChart>
-                        </ResponsiveContainer>
-                      </div>
-
-                      <div className="flex gap-2">
-                        <Button variant="outline" className="flex-1">
-                          View Details
-                        </Button>
-                        <Button
-                          variant="default"
-                          className="flex-1"
-                          onClick={() => handleStrategyToggle(strategy.name)}
-                        >
-                          {deployedStrategyNames.includes(strategy.name) ? 'Deactivate' : 'Activate'}
-                        </Button>
-                      </div>
+                      {/* Button */}
+                      <Button
+                        variant={deployedStrategyNames.includes(strategy.name) ? 'destructive' : 'default'}
+                        className="w-full text-sm font-medium py-2 px-4 rounded-md transition-colors duration-150"
+                        onClick={() => handleStrategyToggle(strategy.name)}
+                      >
+                        {deployedStrategyNames.includes(strategy.name) ? 'Deactivate' : 'Activate'}
+                      </Button>
                     </CardContent>
                   </Card>
                 ))

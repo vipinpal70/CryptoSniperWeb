@@ -52,7 +52,7 @@ const AddBrokerModal: React.FC<AddBrokerModalProps> = ({ isOpen, onClose, onSucc
         email: user?.email || '',
         broker_name: "BingX"
       }).toString();
-      const addBrokerResponse = await apiRequest("POST", `/api/add-broker?${queryParams}`, {
+      const addBrokerResponse = await apiRequest("POST", `/add-broker?${queryParams}`, {
         broker_id: brokerId,
         app_name: appName,
         api_key: apiKey,
@@ -63,7 +63,7 @@ const AddBrokerModal: React.FC<AddBrokerModalProps> = ({ isOpen, onClose, onSucc
         console.log("Broker added successfully");
         
         // Step 2: Verify broker
-        const verifyResponse = await apiRequest("POST", "/api/verify-broker", {
+        const verifyResponse = await apiRequest("POST", "/verify-broker", {
           email: user?.email || '',
           broker_name: "BingX",
           broker_id: brokerId,

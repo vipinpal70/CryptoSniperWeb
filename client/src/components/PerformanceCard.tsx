@@ -1,4 +1,7 @@
-import React from 'react';
+import React, { useState } from 'react';
+import { useAuth } from "@/lib/auth";
+import { useToast } from "@/hooks/use-toast";
+import { Button } from "@/components/ui/button";
 
 interface PerformanceGraphProps {
     showMarker?: boolean;
@@ -86,32 +89,148 @@ const PerformanceGraph: React.FC<PerformanceGraphProps> = ({ showMarker = false 
     );
 };
 
-interface PerformanceCardProps {
-    showMarker?: boolean;
+export interface PerformanceData {
+    _id: string;
+    name: string;
+    type: string;
+    description: string;
+    leverage: string;
+    margin: string;
+    created_at: string;
+    updated_at: string;
+    is_active: boolean;
+    isDeployed: boolean;
+    BTC: boolean;
+    ETH: boolean;
+    SOL: boolean;
+    TotalTrades: number;
+    Returns: number;
+    WinRate: number;
+    MaxDrawdown: number;
 }
 
-const PerformanceCard: React.FC<PerformanceCardProps> = ({ showMarker = false }) => {
+interface PerformanceCardProps {
+    data: PerformanceData;
+    showMarker?: boolean;
+    onDeploy?: () => void;
+}
+
+const PerformanceCard: React.FC<PerformanceCardProps> = ({ data, showMarker = false, onDeploy }) => {
+    const { user } = useAuth();
+    const { toast } = useToast();
     return (
         <div className="bg-white rounded-lg shadow-sm p-6 w-full">
-            <h3 className="text-lg font-medium text-gray-800 mb-4">Advanced Delta Neutral</h3>
+            <div className="flex justify-between items-start mb-2">
+                <div>
+                    <h3 className="text-lg font-medium text-gray-800">{data.name}</h3>
+                    <p className="text-sm text-gray-500">{data.type}</p>
+                </div>
+                <div className="flex space-x-2">
+                    {data.ETH && <span className="bg-blue-100 text-blue-800 text-xs px-2 py-1 rounded">ETH</span>}
+                    {data.BTC && <span className="bg-orange-100 text-orange-800 text-xs px-2 py-1 rounded">BTC</span>}
+                    {data.SOL && <span className="bg-purple-100 text-purple-800 text-xs px-2 py-1 rounded">SOL</span>}
+                </div>
+            </div>
+            {/* <p className="text-sm text-gray-600 mb-4">{data.description}</p> */}
+            <div className="flex space-x-4 mb-4">
+                <div className="text-sm">
+                    <span className="text-[#06C10F] font-medium">Leverage: {data.leverage}</span>
+                </div>
+                <div className="text-sm">
+                    <span className="text-red-500 font-medium">Margin: ${data.margin}</span>
+                </div>
+            </div>
 
             <div className="mb-4">
                 <PerformanceGraph showMarker={showMarker} />
             </div>
 
-            <div className="grid grid-cols-2 gap-y-2">
-                <div className="text-sm text-gray-600">Number of Trades:</div>
-                <div className="text-sm font-medium text-right">451</div>
+            <div className="grid grid-cols-2 gap-y-2 mb-4">
+                <div className="text-sm text-gray-600">Total Trades:</div>
+                <div className="text-sm font-medium text-right">{data.TotalTrades.toLocaleString()}</div>
 
                 <div className="text-sm text-gray-600">Total Returns:</div>
-                <div className="text-sm font-medium text-right">61.0234578</div>
+                <div className="text-sm font-medium text-right text-green-600">{data.Returns}%</div>
 
-                <div className="text-sm text-gray-600">Total Trades:</div>
-                <div className="text-sm font-medium text-right">1290</div>
+                <div className="text-sm text-gray-600">Win Rate:</div>
+                <div className="text-sm font-medium text-right">{data.WinRate}%</div>
 
-                <div className="text-sm text-gray-600">Max DD:</div>
-                <div className="text-sm font-medium text-right text-red-500">451.00</div>
+
+                <div className="text-sm text-gray-600">Max Drawdown:</div>
+                <div className="text-sm font-medium text-right text-red-500">{data.MaxDrawdown}%</div>
             </div>
+
+            <Button 
+                variant="outline"
+                className="w-full border border-blue-600 text-blue-600 font-medium py-2 rounded-full transition-colors duration-200 hover:bg-blue-600 hover:text-white active:bg-blue-700"
+                onClick={async () => {
+                    try {
+                        if (!user?.email) {
+                            toast({
+                                title: "Authentication Required",
+                                description: "Please log in to deploy strategies.",
+                                variant: "destructive"
+                            });
+                            return;
+                        }
+
+                        // Check if broker is added by checking sessionStorage
+                        const brokerName = sessionStorage.getItem("broker_name");
+                        if (!brokerName) {
+                            toast({
+                                title: "Broker Required",
+                                description: "Please add your Broker first before deploying strategies.",
+                                variant: "destructive"
+                            });
+                            return;
+                        }
+
+
+                        const baseUrl = import.meta.env.VITE_API_URL;
+                        const apiUrl = baseUrl.startsWith('http')
+                          ? new URL('/api/add-strategy', baseUrl)
+                          : new URL(`${window.location.origin}${baseUrl}/add-strategy`);
+                        
+                        apiUrl.searchParams.append('email', user.email);
+                        apiUrl.searchParams.append('strategy_name', data.name);
+
+                        const response = await fetch(apiUrl.toString(), {
+                            method: 'POST',
+                            headers: {
+                                'Accept': 'application/json',
+                                'Content-Type': 'application/json'
+                            },
+                            credentials: 'include'
+                        });
+
+                        if (!response.ok) {
+                            throw new Error(`Server responded with status: ${response.status}`);
+                        }
+
+
+                        toast({
+                            title: "Strategy Deployed",
+                            description: `${data.name} has been successfully deployed.`,
+                            variant: "default"
+                        });
+
+                        // Refresh the parent component if needed
+                        if (onDeploy) {
+                            onDeploy();
+                        }
+
+                    } catch (error) {
+                        console.error('Error deploying strategy:', error);
+                        toast({
+                            title: "Deployment Failed",
+                            description: error instanceof Error ? error.message : "Failed to deploy strategy. Please try again.",
+                            variant: "destructive"
+                        });
+                    }
+                }}
+            >
+                Deploy Strategy
+            </Button>
         </div>
     );
 };

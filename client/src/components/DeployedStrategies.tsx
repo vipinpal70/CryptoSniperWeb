@@ -4,9 +4,6 @@ import { useQuery } from '@tanstack/react-query';
 import { apiRequest } from '@/lib/queryClient';
 import { useAuth } from '@/lib/auth';
 
-
-
-
 const DeployedStrategies = () => {
   const { user } = useAuth();
   const [isActiveUser, setisActiveUser] = useState(false)
@@ -18,15 +15,15 @@ const DeployedStrategies = () => {
 
   // fetch user broker is connected or not
   const { data: strategies, isLoading: isLoadingStrategies } = useQuery({
-    queryKey: ['/api/deployed-strategies', user?.email],
+    queryKey: ['/deployed-strategies', user?.email],
     staleTime: 30000,
     queryFn: () => {
-      return apiRequest("GET", `/api/deployed-strategies?email=${encodeURIComponent(user?.email || '')}`);
+      return apiRequest("GET", `/deployed-strategies?email=${encodeURIComponent(user?.email || '')}`);
     }
   });
 
   return (
-    <div className="bg-white rounded-3xl p-6 w-full max-w-md shadow-sm">
+    <div className="bg-white rounded-3xl p-6 w-full h-full max-w-md shadow-sm">
       <h2 className="text-2xl font-bold text-gray-900 mb-4 flex justify-center">Deployed Strategies</h2>
 
       {isLoadingStrategies ? (

@@ -3,7 +3,7 @@ import { ArrowRight, Lock, ChevronRight } from "lucide-react";
 import CryptoSniperWelcome from "@/components/CryptoSniperWelcome";
 import Sidebar from "@/components/Sidebar";
 import PerformanceCard from "@/components/PerformanceCard";
-
+import Lowheader from "@/components/Lowheader"
 
 
 export default function Visitor() {
@@ -11,68 +11,115 @@ export default function Visitor() {
         <div className="flex min-h-screen bg-neutral-50">
             <Sidebar />
 
-            <div className="bg-gray-100 flex-1 p-2 md:ml-64 font-sans">
+            <div className="bg-gray-100 flex-1 md:ml-64 font-sans">
                 {/* Header */}
-                <header className="bg-white p-3 flex justify-between items-center border-b">
-                    <div className="flex items-center space-x-4">
-                        <span className="font-bold text-blue-700">Crypto</span>
-                        <div className="flex items-center space-x-2">
-                            <span>BTC: 2448.60</span>
-                            <span className="text-red-500">(+0.03%)</span>
-                            <ChevronRight size={14} />
+
+                <header className="w-full bg-white border-b shadow-sm">
+                    <div className="max-w-7xl mx-auto px-4 py-3 flex justify-between items-center">
+                        {/* Right Side (Buttons) */}
+                        <div>{""}</div>
+                        <div className="flex items-center space-x-3">
+                            <button className="bg-blue-600 text-white px-4 py-1 rounded-full text-sm"
+                                onClick={() => {
+                                    window.location.href = "/signin"
+                                }}
+                            >Sign in</button>
+                            <button className="border border-blue-600 text-blue-600 px-4 py-1 rounded-full text-sm"
+                                onClick={() => {
+                                    window.location.href = "/signup"
+                                }}
+                            >Create account</button>
                         </div>
-                        <div className="flex items-center space-x-2">
-                            <span>ETH: 2448.60</span>
-                            <span className="text-green-500">(+0.03%)</span>
-                            <ChevronRight size={14} />
-                        </div>
-                        <div className="flex items-center space-x-2">
-                            <span>SOL: 2448.60</span>
-                            <span className="text-green-500">(+0.03%)</span>
-                            <ChevronRight size={14} />
-                        </div>
-                    </div>
-                    <div className="flex items-center space-x-4">
-                        <div className="flex items-center">
-                            <span className="text-sm">Call us at +912234456566</span>
-                        </div>
-                        <div className="flex items-center">
-                            <span className="text-sm">Chat with us</span>
-                        </div>
-                        <button className="bg-blue-600 text-white px-4 py-1 rounded-full text-sm"
-                        onClick={() => {
-                            window.location.href = "/signin"
-                        }}
-                        >Sign in</button>
-                        <button className="border border-blue-600 text-blue-600 px-4 py-1 rounded-full text-sm"
-                        onClick={() => {
-                            window.location.href = "/signup"
-                        }}
-                        >Create account</button>
                     </div>
                 </header>
 
-                <CryptoSniperWelcome />
+                <Lowheader />
+
+                <div className="p-4">
+                    <CryptoSniperWelcome />
+                </div>
 
                 {/* Strategies Section */}
                 <div className="mx-4 my-6">
                     <div className="flex justify-between items-center mb-4">
                         <h2 className="text-lg font-bold">Strategies</h2>
-                        <button className="flex items-center text-sm text-blue-600">
+                        <button className="flex items-center text-sm text-blue-600"
+                            onClick={() => {
+                                window.location.href = "/strategies"
+                            }}
+                        >
                             View All
                             <ArrowRight size={16} className="ml-1" />
                         </button>
                     </div>
 
                     <div className="grid grid-cols-3 gap-4">
-                        {/* Strategy Card 1 */}
-                        <PerformanceCard />
+                        {/* ETH Multiplier Strategy */}
+                        <PerformanceCard 
+                            data={{
+                                _id: "1000",
+                                name: "ETH Multiplier",
+                                type: "Ethereum Futures",
+                                description: "A fast-paced Ethereum scalping strategy designed to capture quick, short-term profits.",
+                                leverage: "20X",
+                                margin: "200",
+                                created_at: "2025-05-05",
+                                updated_at: "2025-05-05",
+                                is_active: true,
+                                BTC: false,
+                                ETH: true,
+                                SOL: false,
+                                TotalTrades: 968,
+                                Returns: 300,
+                                WinRate: 67,
+                                MaxDrawdown: 40
+                            }}
+                        />
 
-                        {/* Strategy Card 2 */}
-                        <PerformanceCard showMarker={true} />
+                        {/* BTC Dominance Strategy */}
+                        <PerformanceCard 
+                            showMarker={true}
+                            data={{
+                                _id: "1001",
+                                name: "Bit Bounce",
+                                type: "Bitcoin Futures",
+                                description: "A trend-following strategy that capitalizes on Bitcoin's market dominance cycles.",
+                                leverage: "15X",
+                                margin: "500",
+                                created_at: "2025-04-15",
+                                updated_at: "2025-05-10",
+                                is_active: true,
+                                BTC: true,
+                                ETH: false,
+                                SOL: false,
+                                TotalTrades: 1242,
+                                Returns: 187,
+                                WinRate: 72,
+                                MaxDrawdown: 28
+                            }}
+                        />
 
-                        {/* Strategy Card 3 */}
-                        <PerformanceCard />
+                        {/* SOL High Velocity */}
+                        <PerformanceCard 
+                            data={{
+                                _id: "1002",
+                                name: "SOL High Velocity",
+                                type: "Solana Futures",
+                                description: "High-frequency trading strategy optimized for Solana's fast blockchain.",
+                                leverage: "25X",
+                                margin: "150",
+                                created_at: "2025-03-20",
+                                updated_at: "2025-05-18",
+                                is_active: true,
+                                BTC: false,
+                                ETH: false,
+                                SOL: true,
+                                TotalTrades: 2156,
+                                Returns: 425,
+                                WinRate: 63,
+                                MaxDrawdown: 35
+                            }}
+                        />
                     </div>
                 </div>
             </div>

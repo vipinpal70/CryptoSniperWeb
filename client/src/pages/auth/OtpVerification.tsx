@@ -32,7 +32,7 @@ export default function OtpVerification() {
       });
     }
 
-  
+
 
     // Start countdown
     const interval = setInterval(() => {
@@ -116,8 +116,8 @@ export default function OtpVerification() {
 
       // send a request to the api 
       const verifyResponse = await apiRequest("POST", "/api/auth/signup", {
-              email: email,
-            });
+        email: email,
+      });
       if (verifyResponse?.message === "OTP sent successfully") {
         // Save details in sessionStorage for future steps
         setTimeLeft(30);
@@ -139,67 +139,67 @@ export default function OtpVerification() {
     }
   };
 
- const handleSubmit = async (e: React.FormEvent) => {
-   e.preventDefault();
-   setIsSubmitting(true);
- 
-   const otp = otpValues.join("");
-   if (otp.length !== 6 || !/^\d+$/.test(otp)) {
-     setIsSubmitting(false);
-     toast({
-       title: "Error",
-       description: "Please enter a valid 6-digit OTP",
-       variant: "destructive",
-     });
-     return;
-   }
- 
-   try {
-     // First verify the OTP directly with the API
-    //  const verifyResponse = await apiRequest("POST", "/api/auth/verify-otp", {
-    //    email,
-    //    otp
-    //  });
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsSubmitting(true);
 
-     const verifyResponse = await verifyOtp(email,otp)
-     
-     if (verifyResponse) {
-       // OTP verification successful
-       // Then check if broker is connected (if needed)
-       try {
-         // Make sure email is not null before using it
-         toast({
-          title: "Success",
-          description: "OTP verificatio successful",
-        });
-        await new Promise(resolve => setTimeout(resolve, 10));
-         // If successful, navigate to the complete profile page
-         navigate("/");
-       } catch (brokerError) {
-         console.error("Broker check error:", brokerError);
-         // Still navigate even if broker check fails
-        //  navigate("/complete-profile");
-       }
-     } else {
-       // This should not happen since the API would throw an error for invalid OTP
-       throw new Error("OTP verification failed");
-     }
+    const otp = otpValues.join("");
+    if (otp.length !== 6 || !/^\d+$/.test(otp)) {
+      setIsSubmitting(false);
+      toast({
+        title: "Error",
+        description: "Please enter a valid 6-digit OTP",
+        variant: "destructive",
+      });
+      return;
+    }
 
-    
+    try {
+      // First verify the OTP directly with the API
+      //  const verifyResponse = await apiRequest("POST", "/api/auth/verify-otp", {
+      //    email,
+      //    otp
+      //  });
 
-   } catch (error) {
-     console.error("OTP verification error:", error);
-     setIsInvalid(true);
-     // Display error message using toast instead of rendering the error object directly
-     toast({
-       title: "Error",
-       description: error instanceof Error ? error.message : "Failed to verify OTP",
-       variant: "destructive",
-     });
-   } finally {
-     setIsSubmitting(false);
-   }
- };
+      const verifyResponse = await verifyOtp(email, otp)
+
+      if (verifyResponse) {
+        // OTP verification successful
+        // Then check if broker is connected (if needed)
+        try {
+          // Make sure email is not null before using it
+          toast({
+            title: "Success",
+            description: "OTP verificatio successful",
+          });
+          await new Promise(resolve => setTimeout(resolve, 10));
+          // If successful, navigate to the complete profile page
+          navigate("/");
+        } catch (brokerError) {
+          console.error("Broker check error:", brokerError);
+          // Still navigate even if broker check fails
+          //  navigate("/complete-profile");
+        }
+      } else {
+        // This should not happen since the API would throw an error for invalid OTP
+        throw new Error("OTP verification failed");
+      }
+
+
+
+    } catch (error) {
+      console.error("OTP verification error:", error);
+      setIsInvalid(true);
+      // Display error message using toast instead of rendering the error object directly
+      toast({
+        title: "Error",
+        description: error instanceof Error ? error.message : "Failed to verify OTP",
+        variant: "destructive",
+      });
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
 
   return (
     <AuthLayout>

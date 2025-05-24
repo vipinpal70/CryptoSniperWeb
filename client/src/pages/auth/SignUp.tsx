@@ -26,8 +26,8 @@ const signUpSchema = z.object({
   email: z.string().email({ message: "Please enter a valid email address" }),
   name: z.string().min(1, { message: "Name is required" }),
   phone: z.string()
-  .min(10, { message: "Please enter a valid phone number" })
-  .max(10, { message: "Please enter a valid phone number" }),
+    .min(10, { message: "Please enter a valid phone number" })
+    .max(10, { message: "Please enter a valid phone number" }),
   password: z.string().min(8, { message: "Please enter a valid password number" }),
 });
 
@@ -63,33 +63,33 @@ export default function SignUp() {
       sessionStorage.setItem("signupName", values.name);
       sessionStorage.setItem("signupPhone", values.phone);
       // sessionStorage.setItem("signupPassword",values.password)
-        
+
       // }
 
       await signup(values.email, values.password)
       await new Promise(resolve => setTimeout(resolve, 5));
       const user_dict = {
-      "name": values.name,
-      "email": values.email,
-      "phone": values.phone,
-      "password": values.password,
-      "status": "pending",
-      "referral_code": "",
-      "invited_by": "",
-      "referral_count": 0,
-      "broker_name": ""
-    };
+        "name": values.name,
+        "email": values.email,
+        "phone": values.phone,
+        "password": values.password,
+        "status": "pending",
+        "referral_code": "",
+        "invited_by": "",
+        "referral_count": 0,
+        "broker_name": ""
+      };
 
-    const completeResponse = await apiRequest("POST", "/api/auth/complete-profile", user_dict);
-    if (completeResponse?.message === "Registration completed successfully") {
-      console.log("Profile completed successfully");
-      const profileCompletedKey = `profile_completed_${values.email}`;
-      localStorage.setItem(profileCompletedKey, 'true');
-    }
+      const completeResponse = await apiRequest("POST", "/api/auth/complete-profile", user_dict);
+      if (completeResponse?.message === "Registration completed successfully") {
+        console.log("Profile completed successfully");
+        const profileCompletedKey = `profile_completed_${values.email}`;
+        localStorage.setItem(profileCompletedKey, 'true');
+      }
 
-    
 
-    navigate("/verify-otp");
+
+      navigate("/verify-otp");
 
 
     } catch (error) {
@@ -102,16 +102,46 @@ export default function SignUp() {
     }
   }
 
+
+  // const handleGoogleSignIn = async () => {
+  //   console.log('handleGoogleSignIn calling...');
+
+  //   try {
+  //     const { data, error } = await supabase.auth.signInWithOAuth({
+  //       provider: "google",
+  //       options: {
+  //         redirectTo: `${window.location.origin}`,
+  //       },
+
+  //     });
+
+  //     console.log('Supabase fetched data', data);
+
+  //     if (error) {
+  //       console.error("Google sign-in error:", error.message);
+  //     }
+  //   } catch (error) {
+  //     console.error("Google sign-in exception:", error);
+  //   }
+  // };
+
   const handleGoogleSignIn = async () => {
     console.log('handleGoogleSignIn calling...');
 
     try {
-      const { error } = await supabase.auth.signInWithOAuth({
+      const { data, error } = await supabase.auth.signInWithOAuth({
         provider: "google",
         options: {
-          redirectTo: `${window.location.origin}/home`,
-        },
+          redirectTo: `${window.location.origin}`,
+          skipBrowserRedirect: false, // Ensure browser redirects to OAuth provider
+          queryParams: {
+            prompt: 'select_account', // This forces the account selection popup
+            access_type: 'offline'    // Request refresh token too
+          }
+        }
       });
+
+      console.log('Supabase fetched data', data);
 
       if (error) {
         console.error("Google sign-in error:", error.message);
@@ -120,26 +150,6 @@ export default function SignUp() {
       console.error("Google sign-in exception:", error);
     }
   };
-
-  // const handleGoogleSignIn = async () => {
-  //   console.log('auth calling...');
-  //   try {
-  //     // await signInWithGoogle();
-
-  //     const { data, error } = await supabase.auth.signInWithOAuth({
-  //       provider: "google",
-  //     });
-
-  //     if (error) {
-  //       console.error("Google sign-in error:", error.message);
-  //     } else {
-  //       console.log("Redirecting to Google data fetched", data);
-  //       navigate("/");
-  //     }
-  //   } catch (error) {
-  //     console.error("Google sign-in error:", error);
-  //   }
-  // };
 
   return (
     <AuthLayout>
@@ -260,7 +270,7 @@ export default function SignUp() {
                 fill="#EA4335"
               />
             </svg>
-            Sign in with Google
+            Sign up with Google
           </Button>
         </form>
       </Form>

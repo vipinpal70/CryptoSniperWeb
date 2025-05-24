@@ -41,44 +41,67 @@ export default function SignIn() {
     },
   });
 
+
+
+  // const handleGoogleSignIn = async () => {
+  //   console.log('handleGoogleSignIn calling...');
+
+  //   try {
+  //     const { data, error } = await supabase.auth.signInWithOAuth({
+  //       provider: "google",
+  //       options: {
+  //         redirectTo: `${window.location.origin}`,
+  //       },
+
+  //     });
+
+  //     console.log('Supabase fetched data', data);
+
+  //     if (error) {
+  //       console.error("Google sign-in error:", error.message);
+  //     }
+  //   } catch (error) {
+  //     console.error("Google sign-in exception:", error);
+  //   }
+  // };
+
+  const handleGoogleSignIn = async () => {
+    console.log('handleGoogleSignIn calling...');
+
+    try {
+      const { data, error } = await supabase.auth.signInWithOAuth({
+        provider: "google",
+        options: {
+          redirectTo: `${window.location.origin}/`,
+          skipBrowserRedirect: false, // Ensure browser redirects to OAuth provider
+          queryParams: {
+            prompt: 'select_account', // This forces the account selection popup
+            access_type: 'offline'    // Request refresh token too
+          }
+        }
+      });
+
+      console.log('Supabase fetched data', data);
+
+      if (error) {
+        console.error("Google sign-in error:", error.message);
+      }
+    } catch (error) {
+      console.error("Google sign-in exception:", error);
+    }
+  };
+
+
   async function onSubmit(values: SignInValues) {
     try {
       await signin(values.email, values.password);
+
       navigate("/");
     } catch (error) {
       console.error("Sign in error:", error);
     }
   }
 
-  const handleGoogleSignIn = async () => {
-      console.log('handleGoogleSignIn calling...');
-      
-      try {
-        const { data, error } = await supabase.auth.signInWithOAuth({
-          provider: "google",
-          options: {
-            redirectTo: `${window.location.origin}/home`,
-          },
-          
-        });
-        
-        console.log('Supabase fetched data', data);
-  
-        if (error) {
-          console.error("Google sign-in error:", error.message);
-        }
-      } catch (error) {
-        console.error("Google sign-in exception:", error);
-      }
-    };
-
-  // const handleGoogleSignIn = async () => {
-  //   try {
-  //     await signInWithGoogle();
-  //   } catch (error) {
-  //     console.error("Google sign-in error:", error);
-  //   }
-  // };
 
 
   return (

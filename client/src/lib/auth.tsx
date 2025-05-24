@@ -94,7 +94,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const verifyOtp = async (email: string, otp: string) => {
     setIsLoading(true);
     setError(null);
-    
+
     try {
       // Verify the OTP using Supabase or API call
       const { error } = await supabase.auth.verifyOtp({
@@ -106,12 +106,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (error) {
         throw error;
       }
-      
+
       toast({
         title: "Success",
         description: "OTP verified successfully",
       });
-      
+
       return true;
     } catch (error: any) {
       setError(error.message || "Failed to verify OTP");
@@ -125,38 +125,38 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setIsLoading(false);
     }
   };
-  
+
   const updateUserPhone = async (phone: string) => {
     setIsLoading(true);
     setError(null);
-    
+
     try {
       // First check if the user is logged in
       const { data: sessionData } = await supabase.auth.getSession();
-      
+
       if (!sessionData.session?.user) {
         throw new Error("User not authenticated");
       }
-      
+
       // Update the user's phone number in the user metadata
       const { data, error } = await supabase.auth.updateUser({
         data: { phone: phone }
       });
-      
+
       if (error) {
         throw error;
       }
-      
+
       // Update the local user state
       if (data?.user) {
         setUser(data.user);
       }
-      
+
       toast({
         title: "Success",
         description: "Phone number updated successfully",
       });
-      
+
       return true;
     } catch (error: any) {
       setError(error.message || "Failed to update phone number");
