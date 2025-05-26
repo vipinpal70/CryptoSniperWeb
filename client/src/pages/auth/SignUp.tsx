@@ -35,8 +35,9 @@ type SignUpValues = z.infer<typeof signUpSchema>;
 
 export default function SignUp() {
   const [_, navigate] = useLocation();
-  const { signup, signInWithGoogle, isLoading } = useAuth();
+  const { signup, signInWithGoogle } = useAuth();
   const [showPassword, setShowPassword] = React.useState(false);
+  const [isLoading, setIsLoading] = React.useState(false);
   const { toast } = useToast();
 
   const form = useForm<SignUpValues>({
@@ -53,77 +54,61 @@ export default function SignUp() {
     console.log("otp verification code testing");
 
     try {
-      // const verifyResponse = await apiRequest("POST", "/api/auth/signup", {
-      //   email: values.email,
-      // });
-
-      // if (verifyResponse?.message === "OTP sent successfully") {
-      //   // Save details in sessionStorage for future steps
+      // Set loading state to true when starting the submission
+      setIsLoading(true);
+      
+      // Store user details in session storage for later use
       sessionStorage.setItem("signupEmail", values.email);
       sessionStorage.setItem("signupName", values.name);
       sessionStorage.setItem("signupPhone", values.phone);
-      // sessionStorage.setItem("signupPassword",values.password)
-
-      // }
-
-      await signup(values.email, values.password)
-      await new Promise(resolve => setTimeout(resolve, 5));
-      const user_dict = {
-        "name": values.name,
-        "email": values.email,
-        "phone": values.phone,
-        "password": values.password,
-        "status": "pending",
-        "referral_code": "",
-        "invited_by": "",
-        "referral_count": 0,
-        "broker_name": ""
-      };
-
-      const completeResponse = await apiRequest("POST", "/api/auth/complete-profile", user_dict);
-      if (completeResponse?.message === "Registration completed successfully") {
-        console.log("Profile completed successfully");
-        const profileCompletedKey = `profile_completed_${values.email}`;
-        localStorage.setItem(profileCompletedKey, 'true');
+      sessionStorage.setItem("signupPassword", values.password);
+      
+      // Step 1: First make the API request to your custom backend to send OTP
+      const signupResponse = await apiRequest("POST", "/api/auth/signup", {
+        email: values.email
+      });
+      
+      if (signupResponse?.message === "OTP sent successfully") {
+        console.log("OTP sent successfully");
+        
+        // Step 2: Create user_dict for later use in complete-profile
+        const user_dict = {
+          "name": values.name,
+          "email": values.email,
+          "phone": values.phone,
+          "password": values.password,
+          "status": "pending",
+          "referral_code": "",
+          "invited_by": "",
+          "referral_count": 0,
+          "broker_name": ""
+        };
+        
+        // Store user_dict in session storage for use after OTP verification
+        sessionStorage.setItem("user_dict", JSON.stringify(user_dict));
+        
+        // Navigate to OTP verification page
+        navigate("/verify-otp");
+      } else {
+        throw new Error(signupResponse?.message || "Failed to send OTP");
       }
-
-
-
-      navigate("/verify-otp");
-
-
     } catch (error) {
       console.error("Sign up error:", error);
+      // Set loading state back to false on error
+      setIsLoading(false);
+      
       toast({
         title: "Error",
-        description: error as string,
+        description: typeof error === 'object' && error !== null && 'message' in error 
+          ? (error as Error).message 
+          : error as string,
         variant: "destructive",
       });
+    } finally {
+      // Ensure loading state is reset even if there's an uncaught exception
+      setIsLoading(false);
     }
   }
-
-
-  // const handleGoogleSignIn = async () => {
-  //   console.log('handleGoogleSignIn calling...');
-
-  //   try {
-  //     const { data, error } = await supabase.auth.signInWithOAuth({
-  //       provider: "google",
-  //       options: {
-  //         redirectTo: `${window.location.origin}`,
-  //       },
-
-  //     });
-
-  //     console.log('Supabase fetched data', data);
-
-  //     if (error) {
-  //       console.error("Google sign-in error:", error.message);
-  //     }
-  //   } catch (error) {
-  //     console.error("Google sign-in exception:", error);
-  //   }
-  // };
 
   const handleGoogleSignIn = async () => {
     console.log('handleGoogleSignIn calling...');

@@ -5,8 +5,25 @@ import { Lock, Settings, Home, BarChart, LineChart, History, Youtube, Instagram,
 import { supabase } from "@/lib/supabase";
 
 export default function Sidebar() {
-  const { user } = useAuth();
+  const { user, signout } = useAuth();
   const location = window.location.pathname;
+  
+  const handleLogout = async () => {
+    try {
+      // Use the signout function from auth context which handles both Supabase and custom auth
+      await signout();
+      
+      // Clear any additional storage if needed
+      localStorage.removeItem('broker_name');
+      localStorage.removeItem('api_verified');
+      sessionStorage.clear();
+      
+      // Redirect to the visitor page
+      window.location.href = '/visitor';
+    } catch (error) {
+      console.error('Logout error:', error);
+    }
+  };
 
   const navItems = [
     { name: "Home", path: "/", icon: <Home className="w-5 h-5 mr-2" /> },
@@ -16,13 +33,13 @@ export default function Sidebar() {
   ];
 
   const socialLinks = [
-    { name: "How to use CryptoSniper", icon: <Youtube className="w-5 h-5 mr-2 text-red-500" /> },
-    { name: "Realtime Updates", icon: <MessageCircle className="w-5 h-5 mr-2 text-blue-500" /> },
-    { name: "Join Instagram", icon: <Instagram className="w-5 h-5 mr-2 text-pink-500" /> },
+    { name: "YouTube Channel", icon: <Youtube className="w-5 h-5 mr-2 text-red-500" />, url: "https://www.youtube.com/@iamyashgupta/playlists" },
+    { name: "Join Telegram", icon: <MessageCircle className="w-5 h-5 mr-2 text-blue-500" />, url: "https://t.me/YashGuptaTrader" },
+    { name: "Follow on Instagram", icon: <Instagram className="w-5 h-5 mr-2 text-pink-500" />, url: "https://www.instagram.com/thecryptosnipers?igsh=dmg1Z3Vlb2xjbjNx" },
   ];
 
   const footerLinks = [
-    { name: "Terms & Conditions", icon: <Lock className="w-5 h-5 mr-2" /> },
+    { name: "Terms & Conditions", icon: <Lock className="w-5 h-5 mr-2" />, path: "/terms" },
     { name: "LogOut", icon: <LogOut className="w-5 h-5 mr-2" /> },
   ];
 
@@ -55,7 +72,9 @@ export default function Sidebar() {
           {socialLinks.map((link) => (
             <a
               key={link.name}
-              href="#"
+              href={link.url}
+              target="_blank"
+              rel="noopener noreferrer"
               className="flex items-center text-sm text-gray-700 hover:text-blue-600"
             >
               {link.icon}
@@ -68,8 +87,11 @@ export default function Sidebar() {
           {footerLinks.map((link) => (
             <a
               key={link.name}
-              href="#"
-              onClick={link.name === "LogOut" ? handleLogout : undefined}
+              href={link.path || "#"}
+              onClick={link.name === "LogOut" ? (e) => {
+                e.preventDefault();
+                handleLogout();
+              } : undefined}
               className="flex items-center text-sm text-gray-700 hover:text-blue-600"
             >
               {link.icon}
@@ -82,14 +104,4 @@ export default function Sidebar() {
   );
 }
 
-const handleLogout = async () => {
-  try {
-    await supabase.auth.signOut();
-    localStorage.clear();
-    sessionStorage.clear();
-    // Optionally, redirect to a login page or home page
-    window.location.href = '/login';
-  } catch (error) {
-    console.error('Logout error:', error);
-  }
-};
+// Logout functionality is now handled inside the component

@@ -13,6 +13,7 @@ import Home from "@/pages/Home";
 import Strategies from "@/pages/Strategies";
 import Positions from "@/pages/Positions";
 import History from "@/pages/History";
+import Terms from "@/pages/Terms";
 import NotFound from "@/pages/not-found";
 import { useAuth } from "./lib/auth";
 import { useEffect, useState } from "react";
@@ -21,18 +22,42 @@ import Visitor from "@/pages/Visitor";
 
 function ProtectedRoute({ component: Component }: { component: React.ComponentType }) {
   const { user, isLoading } = useAuth();
+  const [isCheckingAuth, setIsCheckingAuth] = useState(true);
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  
+  useEffect(() => {
+    // Double-check authentication with Supabase directly
+    const checkAuth = async () => {
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (session?.user) {
+          setIsAuthenticated(true);
+        } else if (!isLoading && !user) {
+          // Only redirect if we're sure the user is not authenticated
+          window.location.href = "/visitor";
+        }
+      } catch (error) {
+        console.error("Error checking authentication:", error);
+      } finally {
+        setIsCheckingAuth(false);
+      }
+    };
+    
+    checkAuth();
+  }, [user, isLoading]);
 
-  if (isLoading) {
+  // Show loading state while checking authentication
+  if (isLoading || isCheckingAuth) {
     return <div className="flex h-screen items-center justify-center">Loading...</div>;
   }
 
-  if (!user) {
-    // Redirect to login if not authenticated
-    window.location.href = "/visitor";
-    return null;
+  // If user is authenticated from either source, render the component
+  if (user || isAuthenticated) {
+    return <Component />;
   }
-
-  return <Component />;
+  
+  // This will only be reached if the redirect hasn't happened yet
+  return <div className="flex h-screen items-center justify-center">Redirecting...</div>;
 }
 
 function Router() {
@@ -48,6 +73,7 @@ function Router() {
       <Route path="/strategies" component={() => <ProtectedRoute component={Strategies} />} />
       <Route path="/positions" component={() => <ProtectedRoute component={Positions} />} />
       <Route path="/history" component={() => <ProtectedRoute component={History} />} />
+      <Route path="/terms" component={Terms} />
       <Route component={NotFound} />
     </Switch>
   );

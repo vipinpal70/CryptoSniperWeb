@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useLocation } from 'wouter';
 import { X, Info, Loader2, Copy } from 'lucide-react';
 import { apiRequest } from '@/lib/queryClient';
 import { useToast } from '@/hooks/use-toast';
@@ -14,17 +15,18 @@ const AddBrokerModal: React.FC<AddBrokerModalProps> = ({ isOpen, onClose, onSucc
   const [brokerId, setBrokerId] = useState('');
   const [appName, setAppName] = useState('');
   const [apiKey, setApiKey] = useState('');
-  const [apiSecretKey, setApiSecretKey] = useState('');
+  const [apiSecret, setApiSecret] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const { toast } = useToast();
-  const { user } = useAuth();
+  const { user, hasCustomAuth } = useAuth();
+  const [location, navigate] = useLocation();
 
   if (!isOpen) return null;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    if (!brokerId || !appName || !apiKey || !apiSecretKey) {
+    if (!brokerId || !appName || !apiKey || !apiSecret) {
       toast({
         title: "Error",
         description: "Please fill in all fields",
@@ -41,7 +43,7 @@ const AddBrokerModal: React.FC<AddBrokerModalProps> = ({ isOpen, onClose, onSucc
         broker_id: brokerId,
         app_name: appName,
         api_key: apiKey,
-        secret_key: apiSecretKey,
+        api_secret: apiSecret,
         email: user?.email || '',
         broker_name: "BingX"
       };
@@ -56,7 +58,7 @@ const AddBrokerModal: React.FC<AddBrokerModalProps> = ({ isOpen, onClose, onSucc
         broker_id: brokerId,
         app_name: appName,
         api_key: apiKey,
-        secret_key: apiSecretKey
+        api_secret: apiSecret
       });
       
       if (addBrokerResponse?.success) {
@@ -69,8 +71,7 @@ const AddBrokerModal: React.FC<AddBrokerModalProps> = ({ isOpen, onClose, onSucc
           broker_id: brokerId,
           app_name: appName,
           api_key: apiKey,
-          secret_key: apiSecretKey
-        
+          api_secret: apiSecret
         });
         
         if (verifyResponse?.success) {
@@ -78,9 +79,22 @@ const AddBrokerModal: React.FC<AddBrokerModalProps> = ({ isOpen, onClose, onSucc
             title: "Success",
             description: "Broker connected successfully",
           });
+          
+          // Store broker info in localStorage/sessionStorage for immediate access
+          sessionStorage.setItem("broker_name", "BingX");
+          sessionStorage.setItem("api_verified", "true");
+          
+          // Close modal and call success callback
           onClose();
           if (onSuccess) onSuccess();
-          window.location.reload(); // Reload the page to reflect changes
+          
+          // Use navigation instead of page reload to reflect changes
+          // This avoids the full page reload that's causing authentication issues
+          setTimeout(() => {
+            // Navigate to the same page to trigger a re-render without full reload
+            const currentPath = location;
+            navigate(currentPath);
+          }, 500);
         } else {
           toast({
             title: "Warning",
@@ -187,8 +201,8 @@ const AddBrokerModal: React.FC<AddBrokerModalProps> = ({ isOpen, onClose, onSucc
                 type="password" 
                 className="w-full p-3 border border-gray-200 rounded-full"
                 placeholder="Enter your API secret key"
-                value={apiSecretKey}
-                onChange={(e) => setApiSecretKey(e.target.value)}
+                value={apiSecret}
+                onChange={(e) => setApiSecret(e.target.value)}
                 disabled={isLoading}
                 required
               />

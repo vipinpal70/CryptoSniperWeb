@@ -14,6 +14,9 @@ interface AuthContextType {
   updateUserPhone: (phone: string) => Promise<boolean>;
   signInWithGoogle: () => Promise<void>;
   signout: () => Promise<void>;
+  // Custom backend authentication
+  setCustomUser: (userData: any) => void;
+  hasCustomAuth: boolean;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -22,17 +25,69 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<SupabaseUser | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [hasCustomAuth, setHasCustomAuth] = useState(false);
   const { toast } = useToast();
 
   useEffect(() => {
     const getSession = async () => {
+      // Check for custom authentication first
+      const hasCustomAuthStored = localStorage.getItem('has_custom_auth') === 'true';
+      const authToken = localStorage.getItem('auth_token');
+      
+      if (hasCustomAuthStored && authToken) {
+        setHasCustomAuth(true);
+        
+        // Try to get user data from backend using the token
+        try {
+          const response = await fetch('/api/auth/me', {
+            headers: {
+              'Authorization': `Bearer ${authToken}`
+            },
+            credentials: 'include'
+          });
+          
+          if (response.ok) {
+            const userData = await response.json();
+            
+            // Add safety check for userData
+            if (!userData) {
+              console.error('No user data returned from /api/auth/me endpoint');
+              return;
+            }
+            
+            // Create a Supabase-like user object with careful null checks
+            const customUser = {
+              id: userData?.id || userData?.user?.id || 'custom-id',
+              email: userData?.email || userData?.user?.email || 'unknown@example.com',
+              user_metadata: {
+                ...(userData || {}),
+                custom_auth: true
+              },
+              app_metadata: {
+                provider: 'custom'
+              }
+            } as unknown as SupabaseUser;
+            
+            setUser(customUser);
+          }
+        } catch (error) {
+          console.error('Error fetching custom user data:', error);
+        }
+      }
+      
+      // Then check Supabase session
       const {
         data: { session },
         error,
       } = await supabase.auth.getSession();
 
       if (error) console.error(error);
-      setUser(session?.user ?? null);
+      
+      // Only set user from Supabase if we don't have a custom user
+      if (!hasCustomAuthStored && session?.user) {
+        setUser(session.user);
+      }
+      
       setIsLoading(false);
     };
 
@@ -41,11 +96,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((_event, session) => {
-      setUser(session?.user ?? null);
+      // Only update user from Supabase if we don't have custom auth
+      if (!hasCustomAuth) {
+        setUser(session?.user ?? null);
+      }
     });
 
     return () => subscription.unsubscribe();
-  }, []);
+  }, [hasCustomAuth]);
 
   const signin = async (email: string, password: string) => {
     setIsLoading(true);
@@ -190,6 +248,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const signout = async () => {
+    // Clear custom auth data first
+    localStorage.removeItem('auth_token');
+    localStorage.removeItem('has_custom_auth');
+    setHasCustomAuth(false);
+    
+    // Then sign out from Supabase
     const { error } = await supabase.auth.signOut();
 
     if (error) {
@@ -208,6 +272,42 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   };
 
+  // Function to set a custom user from backend authentication
+  const setCustomUser = (userData: any) => {
+    // Create a Supabase-like user object
+    const customUser = {
+      id: userData.id || userData.user?.id || 'custom-id',
+      email: userData.email || userData.user?.email,
+      user_metadata: {
+        ...userData,
+        custom_auth: true
+      },
+      app_metadata: {
+        provider: 'custom'
+      }
+    } as unknown as SupabaseUser;
+    
+    // Set the user in state
+    setUser(customUser);
+    setHasCustomAuth(true);
+    
+    // Store auth token if available
+    if (userData.token) {
+      localStorage.setItem('auth_token', userData.token);
+    }
+    
+    // Store custom auth flag
+    localStorage.setItem('has_custom_auth', 'true');
+  };
+  
+  // Check for custom auth on initial load
+  useEffect(() => {
+    const hasCustomAuthStored = localStorage.getItem('has_custom_auth') === 'true';
+    if (hasCustomAuthStored) {
+      setHasCustomAuth(true);
+    }
+  }, []);
+
   return (
     <AuthContext.Provider
       value={{
@@ -220,6 +320,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         signInWithGoogle,
         updateUserPhone,
         isLoading,
+        setCustomUser,
+        hasCustomAuth
       }}
     >
       {children}

@@ -1,36 +1,83 @@
 import React, { useEffect, useState } from 'react';
-import { Plus, BarChart3, Zap, Play, ChevronDown, TrendingUp, RefreshCw } from 'lucide-react';
+import { Plus, Play, RefreshCw } from 'lucide-react';
 import AddBrokerModal from './addBrokerModal';
 import { useAuth } from '@/lib/auth';
 import { apiRequest } from '@/lib/queryClient';
 import { useQuery } from '@tanstack/react-query';
-import { Switch } from '@/components/ui/switch';
-import { Button } from '@/components/ui/button';
+import { useToast } from '@/hooks/use-toast';
 
 interface TradingGreetingCardProps {
   userName?: string;
   pnl?: number | 0;
+  brokerName?: string;
 }
 
-const TradingGreetingCard = ({ userName, pnl = 0 }: TradingGreetingCardProps) => {
-  const { user, updateUserPhone, isLoading } = useAuth();
+const TradingGreetingCard = ({ userName, pnl: propPnl = 0, brokerName }: TradingGreetingCardProps) => {
+  const { user } = useAuth();
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isBrokerConnected, setIsBrokerConnected] = useState(false);
-  const [runAllEnabled, setRunAllEnabled] = useState(true);
-  const [email, setEmail] = useState<string | undefined>(undefined)
+  const [email, setEmail] = useState<string | undefined>(undefined);
+  const [sessionPnl, setSessionPnl] = useState<number | undefined>(undefined);
+  const [balance, setBalance] = useState<number | undefined>(undefined);
+  const { toast } = useToast();
+  
+  // Use session PNL if available, otherwise use prop PNL
+  const displayPnl = sessionPnl !== undefined ? sessionPnl : propPnl;
 
+  const handleOpenModal = () => setIsModalOpen(true);
+  const handleCloseModal = () => setIsModalOpen(false);
+  const handleBrokerSuccess = () => setIsBrokerConnected(true);
+
+  // Check session storage for broker connection on component mount and whenever dependencies change
   useEffect(() => {
-    const bn = sessionStorage.getItem('broker_name');
-    const apiverify = sessionStorage.getItem('api_verified');
-    const email = sessionStorage.getItem("signupEmail")
-    if (email) {
-      setEmail(email)
-    }
-    if (apiverify) {
-      setIsBrokerConnected(true);
-    }
-  }, []);
-
+    // Force a check of session storage values
+    const checkBrokerConnection = () => {
+      const bn = sessionStorage.getItem('broker_name');
+      const api_verified = sessionStorage.getItem('api_verified');
+      const email = sessionStorage.getItem('signupEmail');
+      const pnlValue = sessionStorage.getItem('pnl');
+      
+      console.log('Session storage values:', { 
+        broker_name: bn, 
+        api_verified, 
+        email, 
+        pnl: pnlValue, 
+        brokerName 
+      });
+      
+      if (email) {
+        setEmail(email);
+      }
+      
+      if (pnlValue) {
+        try {
+          const parsedPnl = parseFloat(pnlValue);
+          if (!isNaN(parsedPnl)) {
+            setSessionPnl(parsedPnl);
+          }
+        } catch (error) {
+          console.error('Error parsing PNL value:', error);
+        }
+      }
+      
+      // Check all possible conditions that indicate a broker is connected
+      if (api_verified === 'true' || bn || brokerName) {
+        console.log('Setting broker connected to TRUE');
+        setIsBrokerConnected(true);
+      } else {
+        console.log('Broker connection conditions not met');
+      }
+    };
+    
+    // Run the check immediately
+    checkBrokerConnection();
+    
+    // Set up an interval to periodically check session storage
+    const intervalId = setInterval(checkBrokerConnection, 2000);
+    
+    // Clean up interval on component unmount
+    return () => clearInterval(intervalId);
+  }, [brokerName]);
 
   // fetch user broker is connected or not
   const { data: brokerData, isLoading: isLoadingBroker } = useQuery({
@@ -42,24 +89,101 @@ const TradingGreetingCard = ({ userName, pnl = 0 }: TradingGreetingCardProps) =>
       if (!email) {
         throw new Error('Email is required for this API call');
       }
-      return apiRequest("GET", `/get-broker?email=${encodeURIComponent(email)}`);
+      return apiRequest('GET', `/get-broker?email=${encodeURIComponent(email)}`);
+    },
+    retry: 1, // Only retry once to avoid excessive failed requests
+  });
+
+  // Fetch user PNL for Total P&L
+  const { data: pnlData, isError: isPnlError } = useQuery({
+    queryKey: ['/user-pnl', email],
+    staleTime: 30000,
+    enabled: !!email && isBrokerConnected, // Only run when email is available and broker is connected
+    queryFn: () => {
+      if (!email) {
+        throw new Error('Email is required for this API call');
+      }
+      return apiRequest('GET', `/user-pnl?email=${encodeURIComponent(email)}`);
+    },
+    retry: 1,
+    onError: (error) => {
+      console.error('Error fetching PNL:', error);
+      // We'll still use the session PNL as fallback, so no need to show an error toast
+    }
+  });
+  
+  // Fetch user balance for Total Value
+  const { data: balanceData, isError: isBalanceError } = useQuery({
+    queryKey: ['/user-balance', email],
+    staleTime: 30000,
+    enabled: !!email && isBrokerConnected, // Only run when email is available and broker is connected
+    queryFn: () => {
+      if (!email) {
+        throw new Error('Email is required for this API call');
+      }
+      return apiRequest('GET', `/user-balance?email=${encodeURIComponent(email)}`);
+    },
+    retry: 1,
+    onError: (error) => {
+      console.error('Error fetching balance:', error);
+      // We'll still use the session balance as fallback
     }
   });
 
+  // Update broker connection status when broker data is available
   useEffect(() => {
     if (brokerData) {
-      setIsBrokerConnected(true)
+      setIsBrokerConnected(true);
     }
   }, [brokerData]);
-
-  const handleOpenModal = () => setIsModalOpen(true);
-  const handleCloseModal = () => setIsModalOpen(false);
-  const handleBrokerSuccess = () => {
-    setIsBrokerConnected(true);
-  };
-
-
-
+  
+  // Update PNL from the PNL endpoint data if available
+  useEffect(() => {
+    if (pnlData !== undefined) {
+      try {
+        // The PNL endpoint returns a number directly
+        const pnlValue = typeof pnlData === 'number' ? pnlData : parseFloat(pnlData);
+        if (!isNaN(pnlValue)) {
+          console.log('Setting PNL from API:', pnlValue);
+          setSessionPnl(pnlValue);
+          // Also update session storage for consistency
+          sessionStorage.setItem('pnl', pnlValue.toString());
+        }
+      } catch (error) {
+        console.error('Error parsing PNL data:', error);
+      }
+    }
+  }, [pnlData]);
+  
+  // Update balance from the balance endpoint data if available
+  useEffect(() => {
+    if (balanceData !== undefined) {
+      try {
+        const balanceValue = typeof balanceData === 'number' ? balanceData : parseFloat(balanceData);
+        if (!isNaN(balanceValue)) {
+          console.log('Setting balance from API:', balanceValue);
+          setBalance(balanceValue);
+          // Also update session storage for consistency
+          sessionStorage.setItem('balance', balanceValue.toString());
+        }
+      } catch (error) {
+        console.error('Error parsing balance data:', error);
+      }
+    } else {
+      // Try to get balance from session storage as fallback
+      const storedBalance = sessionStorage.getItem('balance');
+      if (storedBalance) {
+        try {
+          const parsedBalance = parseFloat(storedBalance);
+          if (!isNaN(parsedBalance)) {
+            setBalance(parsedBalance);
+          }
+        } catch (error) {
+          console.error('Error parsing stored balance:', error);
+        }
+      }
+    }
+  }, [balanceData]);
 
   return (
     <div className="bg-white w-full rounded-xl p-4 shadow-sm">
@@ -72,9 +196,19 @@ const TradingGreetingCard = ({ userName, pnl = 0 }: TradingGreetingCardProps) =>
           </p>
         </div>
         <div className="text-right">
-          <div className="text-sm text-gray-500">Total P&L</div>
-          <div className={`text-3xl font-bold ${pnl >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-            ${(typeof pnl === 'number' ? pnl : 0).toFixed(2)}
+          <div className="flex flex-col gap-1">
+            <div>
+              <div className="text-sm text-gray-500">Total P&L</div>
+              <div className={`text-2xl font-bold ${displayPnl >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                ${(typeof displayPnl === 'number' ? displayPnl : 0).toFixed(2)}
+              </div>
+            </div>
+            <div>
+              <div className="text-sm text-gray-500">Total Value</div>
+              <div className="text-2xl font-bold text-blue-600">
+                ${(typeof balance === 'number' ? balance : 0).toFixed(2)}
+              </div>
+            </div>
           </div>
         </div>
       </div>
@@ -99,9 +233,11 @@ const TradingGreetingCard = ({ userName, pnl = 0 }: TradingGreetingCardProps) =>
               </button>
             </div>
           </div>
+      
           {/* Trading character illustration */}
           <div className="relative w-52 h-42" >
             <svg width="90%" height="90%" viewBox="0 0 154 153" preserveAspectRatio="xMidYMid meet" fill="none" xmlns="http://www.w3.org/2000/svg" xmlnsXlink="http://www.w3.org/1999/xlink">
+              <path d="M78.2157 99.4051C78.2157 99.4051 76.1443 97.6035 72.312 98.8555C68.4797 100.107 67.0038 108.815 67.0038 108.815C67.0038 108.815 65.6603 116.342 65.986 119.483C66.3117 122.623 65.986 123.447 66.6832 124.816C67.3805 126.185 68.266 127.783 69.5994 129.112C70.9328 130.44 72.8871 131.397 73.8439 131.738C74.8007 132.084 76.2359 131.738 76.2359 131.738L77.5184 124.959L78.3276 118.17L78.7449 112.047L79.0656 104.352C79.0656 104.352 79.5134 100.667 78.7144 99.9344C77.9256 99.2066 78.2157 99.4051 78.2157 99.4051Z" fill="#01EFB7" />
               <path d="M78.2157 99.4051C78.2157 99.4051 76.1443 97.6035 72.312 98.8555C68.4797 100.107 67.0038 108.815 67.0038 108.815C67.0038 108.815 65.6603 116.342 65.986 119.483C66.3117 122.623 65.986 123.447 66.6832 124.816C67.3805 126.185 68.266 127.783 69.5994 129.112C70.9328 130.44 72.8871 131.397 73.8439 131.738C74.8007 132.084 76.2359 131.738 76.2359 131.738L77.5184 124.959L78.3276 118.17L78.7449 112.047L79.0656 104.352C79.0656 104.352 79.5134 100.667 78.7144 99.9344C77.9256 99.2066 78.2157 99.4051 78.2157 99.4051Z" fill="#01EFB7" />
               <path d="M81.0759 99.3745C81.0759 99.3745 83.0302 97.4456 86.9337 98.4533C90.8372 99.461 92.8577 108.062 92.8577 108.062C92.8577 108.062 94.6797 115.487 94.5423 118.643C94.4049 121.798 94.7917 122.597 94.1809 124.007C93.5702 125.417 92.7865 127.066 91.5396 128.475C90.2927 129.885 88.4045 130.959 87.4681 131.361C86.5368 131.763 85.0761 131.509 85.0761 131.509L83.3661 124.826L82.1345 118.103L81.3304 112.011L80.5313 104.352C80.5313 104.352 79.8494 100.703 80.6026 99.9241C81.3507 99.1556 81.0759 99.3745 81.0759 99.3745Z" fill="#01EFB7" />
               <path d="M77.4674 99.4354L77.4776 99.4048L77.6099 99.0129C77.6099 99.0129 78.6328 99.4252 78.8313 99.9697C79.0705 100.631 79.1825 101.329 79.1621 102.026C79.1316 102.794 79.0145 105.461 79.0145 105.461L78.8568 109.039L78.7346 112.149L78.4751 116.215C78.4751 116.215 78.302 119.085 78.2053 119.783C78.1086 120.48 77.6659 124.022 77.6659 124.022C77.6659 124.022 77.4674 125.671 77.0552 127.717C76.6378 129.758 76.2459 131.6 76.2459 131.6C76.2459 131.6 76.4495 132.012 75.6505 131.951C74.8515 131.89 74.4749 131.88 74.4749 131.88L74.9227 129.798L75.4113 126.999L75.8592 124.139L76.1442 121.437L76.5259 118.515L76.6836 115.95L77.0297 112.454L77.2435 108.779L77.3452 104.8L77.4318 101.868L77.4725 99.4201L77.4674 99.4354Z" fill="white" />
@@ -243,86 +379,55 @@ const TradingGreetingCard = ({ userName, pnl = 0 }: TradingGreetingCardProps) =>
           </div>
         </div>
       )}
-
-      {/* Broker Connected State */}
-      {isBrokerConnected && (
-        <div className="bg-white rounded-xl p-6 mt-4 border border-gray-200 shadow-sm">
-          {/* Header Section */}
-          <div className="flex justify-between items-start mb-6">
+      
+      {/* If broker is connected */}
+      {/* {isBrokerConnected && (
+        <div className="mt-4 bg-white rounded-xl border border-gray-200 p-4">
+          <div className="flex justify-between items-center mb-2">
+            <h2 className="text-lg font-medium">Trading Account</h2>
+            <span className="text-xs text-green-600 flex items-center gap-1">
+              <span className="inline-block w-2 h-2 bg-green-600 rounded-full"></span> Connected
+            </span>
+          </div>
+          <p className="text-sm text-gray-500 mb-4">Manage your trading account and performance</p>
+          
+          <div className="grid grid-cols-3 gap-4 mb-4">
+            <div className="bg-gray-50 p-3 rounded-lg">
+              <p className="text-xs text-gray-500 mb-1">Total Balance</p>
+              <p className="text-xl font-semibold">$ {Math.abs(sessionPnl || 0).toFixed(2)}</p>
+              <p className="text-xs text-gray-400">+$0.00 (0.00%) today</p>
+            </div>
+            <div className="bg-gray-50 p-3 rounded-lg">
+              <p className="text-xs text-gray-500 mb-1">Available</p>
+              <p className="text-xl font-semibold">$ {Math.abs(sessionPnl || 0).toFixed(2)}</p>
+              <p className="text-xs text-gray-400">USDT</p>
+            </div>
+            <div className="bg-gray-50 p-3 rounded-lg">
+              <p className="text-xs text-gray-500 mb-1">24h P&L</p>
+              <p className="text-xl font-semibold text-green-600">+$0.00</p>
+              <p className="text-xs text-gray-400">+0.00%</p>
+            </div>
+          </div>
+          
+          <div className="flex items-center gap-2 border-t pt-3">
+            <div className="flex items-center gap-2 bg-blue-600 text-white p-1 px-2 rounded">
+              <span className="font-bold text-xs">X</span>
+            </div>
             <div>
-              <h3 className="text-lg font-semibold text-gray-900">Trading Account</h3>
-              <p className="text-sm text-gray-500">Manage your trading account and performance</p>
+              <p className="font-medium">BingX</p>
+              <p className="text-xs text-gray-500">ID: 57662104980</p>
             </div>
-            <div className="flex items-center space-x-2 bg-green-50 text-green-700 px-3 py-1 rounded-full">
-              <div className="w-2 h-2 bg-green-500 rounded-full"></div>
-              <span className="text-sm font-medium">Connected</span>
-            </div>
-          </div>
-
-          {/* Account Overview */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
-            {/* Total Balance */}
-            <div className="bg-gray-50 p-4 rounded-lg">
-              <div className="text-sm text-gray-500 mb-1">Total Balance</div>
-              <div className="text-2xl font-bold text-gray-900">$ 0.00</div>
-              <div className="text-xs text-gray-500 mt-1">+$0.00 (0.00%) today</div>
-            </div>
-
-            {/* Available Balance */}
-            <div className="bg-blue-50 p-4 rounded-lg">
-              <div className="flex items-center justify-between">
-                <span className="text-sm text-blue-600">Available</span>
-                <span className="text-xs bg-blue-100 text-blue-800 px-2 py-0.5 rounded-full">USDT</span>
-              </div>
-              <div className="text-2xl font-bold text-gray-900 mt-1">$ 0.00</div>
-            </div>
-
-            {/* P&L */}
-            <div className="bg-gray-50 p-4 rounded-lg">
-              <div className="text-sm text-gray-500">24h P&L</div>
-              <div className="text-2xl font-bold text-green-600">+$0.00</div>
-              <div className="text-xs text-green-600 mt-1">+0.00%</div>
-            </div>
-          </div>
-
-          {/* Broker Info */}
-          <div className="border-t border-gray-100 pt-4">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center space-x-3">
-                <div className="w-10 h-10 bg-blue-600 rounded-lg flex items-center justify-center">
-                  <span className="text-white font-bold text-sm">X</span>
-                </div>
-                <div>
-                  <div className="font-medium text-gray-900">BingX</div>
-                  <div className="flex items-center space-x-2 text-sm text-gray-500">
-                    <span>ID: 57662104980</span>
-                    <ChevronDown className="w-4 h-4 text-gray-400" />
-                  </div>
-                </div>
-              </div>
-              
-              {/* Quick Actions */}
-              <div className="flex space-x-3">
-                <button 
-                  onClick={() => setRunAllEnabled(!runAllEnabled)}
-                  className="flex items-center space-x-2 px-4 py-2 bg-blue-50 text-blue-600 rounded-lg hover:bg-blue-100 transition-colors"
-                >
-                  <Play className="w-4 h-4" />
-                  <span className="text-sm font-medium">{runAllEnabled ? 'Stop' : 'Run All'}</span>
-                </button>
-                
-                <button className="flex items-center space-x-2 px-4 py-2 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors">
-                  <RefreshCw className="w-4 h-4 text-gray-600" />
-                  <span className="text-sm font-medium text-gray-700">Refresh</span>
-                </button>
-              </div>
+            <div className="ml-auto flex gap-2">
+              <button className="text-blue-600 px-3 py-1 rounded border border-blue-600 text-sm flex items-center gap-1">
+                <Play size={14} /> Stop
+              </button>
+              <button className="text-gray-600 px-3 py-1 rounded border border-gray-300 text-sm flex items-center gap-1">
+                <RefreshCw size={14} /> Refresh
+              </button>
             </div>
           </div>
         </div>
-        //   </div>
-        // </div>
-      )}
-
+      )} */}
       {/* Add Broker Modal */}
       <AddBrokerModal
         isOpen={isModalOpen}

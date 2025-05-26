@@ -29,8 +29,9 @@ type SignInValues = z.infer<typeof signInSchema>;
 
 export default function SignIn() {
   const [_, navigate] = useLocation();
-  const { signin, signInWithGoogle, isLoading } = useAuth();
+  const { signin, signInWithGoogle, setCustomUser } = useAuth();
   const [showPassword, setShowPassword] = React.useState(false);
+  const [isLoading, setIsLoading] = React.useState(false);
 
   const form = useForm<SignInValues>({
     resolver: zodResolver(signInSchema),
@@ -94,11 +95,110 @@ export default function SignIn() {
 
   async function onSubmit(values: SignInValues) {
     try {
-      await signin(values.email, values.password);
-
-      navigate("/");
+      // Set loading state to true when starting the submission
+      setIsLoading(true);
+      
+      // First try to authenticate with Supabase
+      try {
+        // Attempt Supabase authentication
+        const { data, error } = await supabase.auth.signInWithPassword({
+          email: values.email,
+          password: values.password
+        });
+        
+        if (error) {
+          console.log("Supabase authentication failed, trying custom backend...");
+          // If Supabase auth fails, we'll try the custom backend below
+          throw error;
+        }
+        
+        if (data.session) {
+          // Supabase auth succeeded
+          console.log("Supabase authentication successful");
+          
+          // Add a small delay to ensure auth state is fully propagated
+          setTimeout(() => {
+            navigate("/");
+          }, 500);
+          return;
+        }
+      } catch (supabaseError) {
+        // Supabase authentication failed, continue to custom backend
+        console.log("Falling back to custom backend authentication");
+      }
+      
+      // If Supabase auth failed, try custom backend authentication
+      try {
+        // Make a direct request to your custom backend authentication endpoint
+        const response = await fetch('/api/auth/signin', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            email: values.email,
+            password: values.password
+          }),
+          credentials: 'include'
+        });
+        
+        if (!response.ok) {
+          throw new Error(`Backend authentication failed: ${response.status}`);
+        }
+        
+        const data = await response.json();
+        
+        if (data.success || data.token) {
+          console.log("Custom backend authentication successful", data);
+          
+          // Use the setCustomUser function from the auth context to set the user
+          setCustomUser(data);
+          
+          // For users authenticated with the custom backend,
+          // create a corresponding Supabase account to keep systems in sync
+          try {
+            // First check if user already exists in Supabase
+            const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
+              email: values.email,
+              password: values.password
+            });
+            
+            if (signUpError && !signUpError.message.includes('already exists')) {
+              console.warn("Failed to create Supabase account for existing user", signUpError);
+            }
+            
+            // Try to sign in with Supabase again
+            const { data: signInData } = await supabase.auth.signInWithPassword({
+              email: values.email,
+              password: values.password
+            });
+            
+            // Navigate to home page with a delay to ensure auth state is updated
+            setTimeout(() => {
+              navigate("/");
+            }, 500);
+          } catch (syncError) {
+            console.warn("Error syncing authentication systems", syncError);
+            // Still navigate to home since backend auth succeeded
+            setTimeout(() => {
+              navigate("/");
+            }, 500);
+          }
+        } else {
+          throw new Error("Authentication failed");
+        }
+      } catch (backendError) {
+        console.error("Backend authentication error:", backendError);
+        throw backendError;
+      }
     } catch (error) {
       console.error("Sign in error:", error);
+      // Reset loading state on error
+      setIsLoading(false);
+    } finally {
+      // Ensure loading state is reset even if there's an uncaught exception
+      // We don't reset here if authentication was successful to avoid button flicker during navigation
+      // The loading state will be reset when the component unmounts
     }
   }
 

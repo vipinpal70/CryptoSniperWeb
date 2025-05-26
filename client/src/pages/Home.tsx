@@ -14,7 +14,7 @@ import {
   Tooltip,
   ResponsiveContainer
 } from "recharts";
-import { BarChart3, X, Zap } from "lucide-react";
+import { BarChart3, Play, RefreshCw, X, Zap } from "lucide-react";
 import Lowheader from "@/components/Lowheader";
 import TradingGreetingCard from "@/components/TradingGreetingCard";
 import { apiRequest } from "@/lib/queryClient";
@@ -34,7 +34,7 @@ export default function Home() {
   const [email, setEmail] = useState<string | undefined>(undefined)
   const [phone, setPhone] = useState<string | undefined>(undefined)
   const [password, setPassword] = useState<string | undefined>(undefined)
-  const [balance, setBalace] = useState(0)
+  const [balance, setBalance] = useState(0)
   const [showNotifications, setShowNotifications] = useState(false);
   const [pnl, setPnl] = useState(0)
 
@@ -46,12 +46,21 @@ export default function Home() {
     const brokerName = sessionStorage.getItem("broker_name");
     const brokerIsActive = sessionStorage.getItem("api_verified");
     const balanceFromStorage = sessionStorage.getItem("balance");
+    const pnlFromStorage = sessionStorage.getItem("pnl");
     const notification = sessionStorage.getItem("showNotifications")
+
+    console.log('Home session storage check:', {
+      email,
+      phone,
+      userName,
+      brokerName,
+      brokerIsActive,
+      balance: balanceFromStorage,
+      pnl: pnlFromStorage
+    });
 
     setShowNotifications(notification === 'true')
 
-    // if (notification) {
-    // }
     if (userName) {
       setUserName(userName)
     }
@@ -60,7 +69,6 @@ export default function Home() {
     }
     if (phone) {
       setPhone(phone)
-
     }
     if (brokerName) {
       setBrokerName(brokerName)
@@ -70,7 +78,19 @@ export default function Home() {
     }
 
     if (balanceFromStorage) {
-      setBalace(Number(balanceFromStorage))
+      setBalance(Number(balanceFromStorage))
+    }
+
+    if (pnlFromStorage) {
+      try {
+        const parsedPnl = parseFloat(pnlFromStorage);
+        if (!isNaN(parsedPnl)) {
+          setPnl(parsedPnl);
+          console.log('Setting PNL from session storage:', parsedPnl);
+        }
+      } catch (error) {
+        console.error('Error parsing PNL value from session storage:', error);
+      }
     }
 
     // }
@@ -116,77 +136,101 @@ export default function Home() {
   useEffect(() => {
     // This function handles the profile completion process
     const handleProfileCompletion = async () => {
-      if (user && user.identities && user.identities.length > 0) {
-        // Check if we've already completed the profile for this user
-        const profileCompletedKey = `profile_completed_${user.email}`;
-        const isProfileCompleted = localStorage.getItem(profileCompletedKey) === 'true';
+      // Check if user exists
+      if (!user) {
+        console.log("No user found in auth context");
+        return;
+      }
 
-        if (isProfileCompleted) {
-          // Profile already completed, just set the user data without API call
-          const fullName = user.identities[0].identity_data?.full_name;
+      // Check if we've already completed the profile for this user
+      const userEmail = user.email || user.user_metadata?.email;
+      if (!userEmail) {
+        console.log("No email found for user");
+        return;
+      }
+
+      const profileCompletedKey = `profile_completed_${userEmail}`;
+      const isProfileCompleted = localStorage.getItem(profileCompletedKey) === 'true';
+
+      if (isProfileCompleted) {
+        // Profile already completed, just set the user data without API call
+        let fullName;
+
+        // Handle both Supabase and custom auth user objects
+        if (user.user_metadata?.custom_auth) {
+          // Custom auth user
+          fullName = user.user_metadata?.name || user.user_metadata?.user?.name;
+          setUserName(fullName);
+          setEmail(userEmail);
+        } else if (user.identities && user.identities.length > 0) {
+          // Supabase auth user
+          fullName = user.identities[0].identity_data?.full_name;
           if (typeof fullName === 'string') {
             setUserName(fullName);
           }
-
-          if (typeof user.email === 'string') {
-            setEmail(user.email);
-          }
-
-          return;
+          setEmail(userEmail);
         }
 
-        // Set user name with type safety
-        const fullName = user.identities[0].identity_data?.full_name;
+        return;
+      }
+
+      // Set user data based on auth type
+      let fullName;
+
+      if (user.user_metadata?.custom_auth) {
+        // Custom auth user
+        fullName = user.user_metadata?.name || user.user_metadata?.user?.name;
+        setUserName(fullName);
+        setEmail(userEmail);
+      } else if (user.identities && user.identities.length > 0) {
+        // Supabase auth user
+        fullName = user.identities[0].identity_data?.full_name;
         if (typeof fullName === 'string') {
           setUserName(fullName);
         }
+        setEmail(userEmail);
+      }
 
-        // Set email with type safety
-        if (typeof user.email === 'string') {
-          setEmail(user.email);
-        }
+      // Only proceed if we have the necessary user information
+      if (userEmail && (fullName || userName)) {
+        const user_dict = {
+          "name": fullName || userName || "",
+          "email": userEmail || "",
+          "phone": phone || "",
+          "password": password || "",
+          "status": "pending",
+          "referral_code": "",
+          "invited_by": "",
+          "referral_count": 0,
+          "broker_name": ""
+        };
 
-        // Only proceed if we have the necessary user information
-        if (user.email && (fullName || userName)) {
-          const user_dict = {
-            "name": fullName || userName || "",
-            "email": user.email || "",
-            "phone": phone || "",
-            "password": password || "",
-            "status": "pending",
-            "referral_code": "",
-            "invited_by": "",
-            "referral_count": 0,
-            "broker_name": ""
-          };
-
-          try {
-            const completeResponse = await apiRequest("POST", "/auth/complete-profile", user_dict);
-            if (completeResponse?.message === "Registration completed successfully") {
-              // Mark this profile as completed in localStorage
-              localStorage.setItem(profileCompletedKey, 'true');
-            }
-          } catch (error) {
-            console.error("Profile completion error:", error);
-            // Don't show error toast for now as this is a one-time operation
-            // toast({
-            //   title: "Error",
-            //   description: "Failed to complete profile",
-            //   variant: "destructive",
-            // });
+        try {
+          const completeResponse = await apiRequest("POST", "/auth/complete-profile", user_dict);
+          if (completeResponse?.message === "Registration completed successfully") {
+            // Mark this profile as completed in localStorage
+            localStorage.setItem(profileCompletedKey, 'true');
           }
-        } else {
-          console.log("Missing required user information for profile completion");
-          console.log("user", user);
-          console.log("userName", userName);
-          console.log("email", email)
+        } catch (error) {
+          console.error("Profile completion error:", error);
+          // Don't show error toast for now as this is a one-time operation
+          // toast({
+          //   title: "Error",
+          //   description: "Failed to complete profile",
+          //   variant: "destructive",
+          // });
         }
+      } else {
+        console.log("Missing required user information for profile completion");
+        console.log("user", user);
+        console.log("userName", userName);
+        console.log("email", email);
       }
     };
 
     // Execute the profile completion handler
     handleProfileCompletion();
-  }, [user]); // Keep the user dependency to ensure the effect runs when user becomes available
+  }, [user, userName, email, phone, password]); // Keep the user dependency to ensure the effect runs when user becomes available
 
 
   // fetch user broker is connected or not
@@ -215,8 +259,8 @@ export default function Home() {
     }
   }, [brokerData]);
 
-  // fetch user balance
-  const { data: Balances, isLoading: isLoadingBalance } = useQuery({
+  // fetch user balance - note: this endpoint is currently failing with 500 error
+  const { data: Balances, isLoading: isLoadingBalance, isError: isBalanceError } = useQuery({
     queryKey: ['/user-balance', email],
     staleTime: 30000,
     enabled: !!email,
@@ -225,6 +269,11 @@ export default function Home() {
         throw new Error('Email is required for this API call');
       }
       return apiRequest("GET", `/user-balance?email=${encodeURIComponent(email)}`);
+    },
+    retry: 1, // Only retry once to avoid excessive failed requests
+    onError: (error) => {
+      console.error('Error fetching balance:', error);
+      // We'll use the session storage value or PNL as fallback
     }
   })
 
@@ -244,15 +293,64 @@ export default function Home() {
 
 
   useEffect(() => {
+    // Handle balance data if available
     if (Balances) {
-      setBalace(Balances)
-      sessionStorage.setItem("balance", Balances);
+      try {
+        const balanceValue = typeof Balances === 'number' ? Balances : parseFloat(Balances);
+        if (!isNaN(balanceValue)) {
+          console.log('Setting balance from API:', balanceValue);
+          setBalance(balanceValue);
+          sessionStorage.setItem("balance", balanceValue.toString());
+        }
+      } catch (error) {
+        console.error('Error parsing balance data:', error);
+      }
+    } else if (isBalanceError || isLoadingBalance) {
+      // If there's an error or still loading, try to get balance from broker data
+      if (brokerData && brokerData.balances && brokerData.balances.USDT) {
+        try {
+          const balanceFromBroker = parseFloat(brokerData.balances.USDT);
+          if (!isNaN(balanceFromBroker)) {
+            console.log('Setting balance from broker data:', balanceFromBroker);
+            setBalance(balanceFromBroker);
+            sessionStorage.setItem("balance", balanceFromBroker.toString());
+          }
+        } catch (error) {
+          console.error('Error parsing broker balance data:', error);
+        }
+      } else {
+        // As a last resort, try to get from session storage
+        const storedBalance = sessionStorage.getItem("balance");
+        if (storedBalance) {
+          try {
+            const parsedBalance = parseFloat(storedBalance);
+            if (!isNaN(parsedBalance)) {
+              console.log('Setting balance from session storage:', parsedBalance);
+              setBalance(parsedBalance);
+            }
+          } catch (error) {
+            console.error('Error parsing stored balance:', error);
+          }
+        }
+      }
     }
-    if (pnlData) {
-      setPnl(pnlData)
-      sessionStorage.setItem("pnl", JSON.stringify(pnlData));
+
+    // Handle PNL data if available
+    if (pnlData !== undefined) {
+      try {
+        // The PNL endpoint returns a number directly
+        const pnlValue = typeof pnlData === 'number' ? pnlData : parseFloat(pnlData);
+        if (!isNaN(pnlValue)) {
+          console.log('Setting PNL from API:', pnlValue);
+          setPnl(pnlValue);
+          // Store as simple string, not JSON string
+          sessionStorage.setItem("pnl", pnlValue.toString());
+        }
+      } catch (error) {
+        console.error('Error parsing PNL data:', error);
+      }
     }
-  }, [Balances,pnlData]);
+  }, [Balances, pnlData]);
 
 
   // Fetch portfolio data
@@ -303,20 +401,66 @@ export default function Home() {
             {/* user connection here flex-col lg:flex-row gap-6 */}
             <div className="basis-[62%] ">
               {brokerIsActive === "true" ? (
-                <div className="mb-6 flex justify-between items-center">
-                  <div>
-                    <h1 className="text-2xl font-semibold">Hi, {userName || "there"}!</h1>
-                    <p className="text-neutral-500">Hey, Trade Smarter, Execute Faster- Powering your Crypto Strategies!</p>
+                <div className="mt-4 bg-white rounded-xl border border-gray-200 p-4">
+                  <div className="flex justify-between items-center mb-2">
+                    <h2 className="text-lg font-medium">Trading Account</h2>
+                    <span className="text-xs text-green-600 flex items-center gap-1">
+                      <span className="inline-block w-2 h-2 bg-green-600 rounded-full"></span> Connected
+                    </span>
                   </div>
-                  <div className="text-right">
-                    <div className="text-sm text-gray-500">Total P&L</div>
-                    <div className={`text-2xl font-bold ${(pnl || 0) >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                      {pnl ? `${pnl}` : "0.00"}
+                  <p className="text-sm text-gray-500 mb-4">Manage your trading account and performance</p>
+
+                  <div className="grid grid-cols-3 gap-4 mb-4">
+                    <div className="bg-gray-50 p-3 rounded-lg">
+                      <p className="text-xs text-gray-500 mb-1">Total Balance</p>
+                      <p className="text-xl font-semibold">$ {Math.abs(balance || 0).toFixed(2)}</p>
+                      <p className="text-xs text-gray-400">+$0.00 (0.00%) today</p>
+                    </div>
+                    <div className="bg-gray-50 p-3 rounded-lg">
+                      <p className="text-xs text-gray-500 mb-1">Available</p>
+                      <p className="text-xl font-semibold">$ {Math.abs(balance || 0).toFixed(2)}</p>
+                      <p className="text-xs text-gray-400">USDT</p>
+                    </div>
+                    <div className="bg-gray-50 p-3 rounded-lg">
+                      <p className="text-xs text-gray-500 mb-1">24h P&L</p>
+                      <p className="text-xl font-semibold text-green-600">+$0.00</p>
+                      <p className="text-xs text-gray-400">+0.00%</p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-2 border-t pt-3">
+                    <div className="flex items-center gap-2 bg-blue-600 text-white p-1 px-2 rounded">
+                      <span className="font-bold text-xs">X</span>
+                    </div>
+                    <div>
+                      <p className="font-medium">BingX</p>
+                      <p className="text-xs text-gray-500">ID: 57662104980</p>
+                    </div>
+                    <div className="ml-auto flex gap-2">
+                      <button className="text-blue-600 px-3 py-1 rounded border border-blue-600 text-sm flex items-center gap-1">
+                        <Play size={14} /> Stop
+                      </button>
+                      <button className="text-gray-600 px-3 py-1 rounded border border-gray-300 text-sm flex items-center gap-1">
+                        <RefreshCw size={14} /> Refresh
+                      </button>
                     </div>
                   </div>
                 </div>
+
+                // <div className="mb-6 flex justify-between items-center">
+                //   <div>
+                //     <h1 className="text-2xl font-semibold">Hi, {userName || "there"}!</h1>
+                //     <p className="text-neutral-500">Hey, Trade Smarter, Execute Faster- Powering your Crypto Strategies!</p>
+                //   </div>
+                //   <div className="text-right">
+                //     <div className="text-sm text-gray-500">Total P&L</div>
+                //     <div className={`text-2xl font-bold ${(pnl || 0) >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                //       {pnl ? `${pnl}` : "0.00"}
+                //     </div>
+                //   </div>
+                // </div>
               ) : (
-                (user || userName) ? <TradingGreetingCard userName={userName} pnl={pnl} /> : <CryptoSniperWelcome />
+                (user || userName) ? <TradingGreetingCard userName={userName} pnl={pnl} brokerName={brokerName} /> : <CryptoSniperWelcome />
               )}
 
               {/* Portfolio Overview Card */}
@@ -326,8 +470,8 @@ export default function Home() {
                   <div>
                     <h2 className="text-lg font-medium">Total Value</h2>
                     <div className="text-3xl font-semibold mt-2">
-                      {isLoadingPortfolio 
-                        ? "Loading..." 
+                      {isLoadingPortfolio
+                        ? "Loading..."
                         : balance?.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 4 })}
                       <span className="text-sm font-normal text-neutral-500 ml-1">
                         {'USDT'}
