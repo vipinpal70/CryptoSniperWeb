@@ -39,8 +39,16 @@ export default function Home() {
   const [pnl, setPnl] = useState(0)
 
   // In wouter, you need to get the state from the history.state object
+  // Effect to handle user data from auth context
   useEffect(() => {
-    const email = sessionStorage.getItem("signupEmail");
+    // If user is available from auth context, store their email in session storage
+    if (user?.email) {
+      sessionStorage.setItem("signupEmail", user.email);
+      setEmail(user.email);
+    }
+
+    // Get user data from session storage as fallback
+    const emailFromStorage = sessionStorage.getItem("signupEmail");
     const phone = sessionStorage.getItem("signupPhone");
     const userName = sessionStorage.getItem("signupName")
     const brokerName = sessionStorage.getItem("broker_name");
@@ -48,11 +56,12 @@ export default function Home() {
     const balanceFromStorage = sessionStorage.getItem("balance");
     const pnlFromStorage = sessionStorage.getItem("pnl");
     const notification = sessionStorage.getItem("showNotifications")
-
+    const userDataStr = sessionStorage.getItem("user_dict");
+    const userData = userDataStr ? JSON.parse(userDataStr) : null;
+    
     console.log('Home session storage check:', {
-      email,
+      email: emailFromStorage || user?.email,
       phone,
-      userName,
       brokerName,
       brokerIsActive,
       balance: balanceFromStorage,
@@ -61,18 +70,30 @@ export default function Home() {
 
     setShowNotifications(notification === 'true')
 
+    // Set state from session storage or user object
     if (userName) {
       setUserName(userName)
+    } else if (user?.user_metadata?.name) {
+      setUserName(user.user_metadata.name);
+      sessionStorage.setItem("signupName", user.user_metadata.name);
     }
-    if (email) {
-      setEmail(email)
+
+    // Only set email from storage if not already set from user object
+    if (emailFromStorage && !email) {
+      setEmail(emailFromStorage)
     }
+
     if (phone) {
       setPhone(phone)
+    } else if (user?.user_metadata?.phone) {
+      setPhone(user.user_metadata.phone);
+      sessionStorage.setItem("signupPhone", user.user_metadata.phone);
     }
+
     if (brokerName) {
       setBrokerName(brokerName)
     }
+
     if (brokerIsActive) {
       setBrokerIsActive(brokerIsActive)
     }
@@ -92,19 +113,16 @@ export default function Home() {
         console.error('Error parsing PNL value from session storage:', error);
       }
     }
-
-    // }
   }, [setShowNotifications]);
 
 
   useEffect(() => {
     const completeProfileIfNeeded = async () => {
-      if (userName && email && phone && password) {
+      if (userName && email && phone) {
         const user_dict = {
           "name": user?.identities?.[0]?.identity_data?.full_name || userName,
           "email": email,
           "phone": phone,
-          "password": password,
           "status": "pending",
           "referral_code": "",
           "invited_by": "",
@@ -113,8 +131,13 @@ export default function Home() {
         };
 
         try {
-          const completeResponse = await apiRequest("POST", "/auth/complete-profile", user_dict);
+          const completeResponse = await apiRequest("POST", "/api/auth/complete-profile", user_dict);
           if (completeResponse?.message === "Registration completed successfully") {
+            // Mark profile as completed in local storage
+            const userEmail = user?.email || email;
+            if (userEmail) {
+              localStorage.setItem(`profile_completed_${userEmail}`, 'true');
+            }
           }
         } catch (error) {
           console.error("Profile completion error:", error);
@@ -130,8 +153,7 @@ export default function Home() {
     };
 
     completeProfileIfNeeded();
-
-  }, []);
+  }, [userName, email, phone, user, toast]);
 
   useEffect(() => {
     // This function handles the profile completion process
@@ -206,7 +228,7 @@ export default function Home() {
         };
 
         try {
-          const completeResponse = await apiRequest("POST", "/auth/complete-profile", user_dict);
+          const completeResponse = await apiRequest("POST", "/api/auth/complete-profile", user_dict);
           if (completeResponse?.message === "Registration completed successfully") {
             // Mark this profile as completed in localStorage
             localStorage.setItem(profileCompletedKey, 'true');
@@ -243,7 +265,7 @@ export default function Home() {
       if (!email) {
         throw new Error('Email is required for this API call');
       }
-      return apiRequest("GET", `/get-broker?email=${encodeURIComponent(email)}`);
+      return apiRequest("GET", `/api/broker?email=${encodeURIComponent(email)}`);
     }
   });
 
@@ -268,7 +290,7 @@ export default function Home() {
       if (!email) {
         throw new Error('Email is required for this API call');
       }
-      return apiRequest("GET", `/user-balance?email=${encodeURIComponent(email)}`);
+      return apiRequest("GET", `/api/user/balance?email=${encodeURIComponent(email)}`);
     },
     retry: 1, // Only retry once to avoid excessive failed requests
     onError: (error) => {
@@ -286,7 +308,7 @@ export default function Home() {
       if (!email) {
         throw new Error('Email is required for this API call');
       }
-      return apiRequest("GET", `/user-pnl?email=${encodeURIComponent(email)}`);
+      return apiRequest("GET", `/api/user/pnl?email=${encodeURIComponent(email)}`);
     }
   })
 
@@ -296,11 +318,24 @@ export default function Home() {
     // Handle balance data if available
     if (Balances) {
       try {
-        const balanceValue = typeof Balances === 'number' ? Balances : parseFloat(Balances);
-        if (!isNaN(balanceValue)) {
-          console.log('Setting balance from API:', balanceValue);
-          setBalance(balanceValue);
-          sessionStorage.setItem("balance", balanceValue.toString());
+        console.log('Balance data from API:', Balances);
+        
+        // Check if Balances is an object with balance property
+        if (typeof Balances === 'object' && Balances.balance !== undefined) {
+          const balanceValue = parseFloat(Balances.balance);
+          if (!isNaN(balanceValue)) {
+            console.log('Setting balance from API object:', balanceValue);
+            setBalance(balanceValue);
+            sessionStorage.setItem("balance", balanceValue.toString());
+          }
+        } else {
+          // Try to parse as direct number (fallback)
+          const balanceValue = typeof Balances === 'number' ? Balances : parseFloat(Balances);
+          if (!isNaN(balanceValue)) {
+            console.log('Setting balance from API direct value:', balanceValue);
+            setBalance(balanceValue);
+            sessionStorage.setItem("balance", balanceValue.toString());
+          }
         }
       } catch (error) {
         console.error('Error parsing balance data:', error);
@@ -345,6 +380,13 @@ export default function Home() {
           setPnl(pnlValue);
           // Store as simple string, not JSON string
           sessionStorage.setItem("pnl", pnlValue.toString());
+          
+          // Also update email in session storage if available but not yet set
+          if (user?.email && !sessionStorage.getItem("signupEmail")) {
+            sessionStorage.setItem("signupEmail", user.email);
+            setEmail(user.email);
+            console.log('Updated email in session storage from PNL handler:', user.email);
+          }
         }
       } catch (error) {
         console.error('Error parsing PNL data:', error);
@@ -362,12 +404,11 @@ export default function Home() {
       if (!email) {
         throw new Error('Email is required for this API call');
       }
-      return apiRequest("GET", `/portfolio?email=${encodeURIComponent(email)}`);
+      // This endpoint might not exist in the backend yet
+      // Consider creating it or using an alternative endpoint
+      return apiRequest("GET", `/api/user/portfolio?email=${encodeURIComponent(email)}`);
     }
   });
-
-
-
 
   const mockChartData = [
     { date: "Jan", btc: 0, usd: -5 },

@@ -153,7 +153,7 @@ export default function Strategies() {
                         throw new Error('API base URL is not configured');
                     }
 
-                    const url = new URL('/api/deployed-strategies', baseUrl);
+                    const url = new URL('/api/strategies/deployed', baseUrl);
                     url.searchParams.append('email', user.email);
                     console.log('Fetching deployed strategies from:', url.toString());
 
@@ -232,7 +232,7 @@ export default function Strategies() {
 
             try {
                 const baseUrl = import.meta.env.VITE_API_URL || "http://13.235.231.163:8000";
-                const url = new URL('/api/deployed-strategies', baseUrl);
+                const url = new URL('/api/strategies/deployed', baseUrl);
                 url.searchParams.append('email', user.email);
 
                 const response = await fetch(url.toString(), {

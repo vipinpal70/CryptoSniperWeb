@@ -89,7 +89,7 @@ const TradingGreetingCard = ({ userName, pnl: propPnl = 0, brokerName }: Trading
       if (!email) {
         throw new Error('Email is required for this API call');
       }
-      return apiRequest('GET', `/get-broker?email=${encodeURIComponent(email)}`);
+      return apiRequest('GET', `/api/broker?email=${encodeURIComponent(email)}`);
     },
     retry: 1, // Only retry once to avoid excessive failed requests
   });
@@ -103,7 +103,7 @@ const TradingGreetingCard = ({ userName, pnl: propPnl = 0, brokerName }: Trading
       if (!email) {
         throw new Error('Email is required for this API call');
       }
-      return apiRequest('GET', `/user-pnl?email=${encodeURIComponent(email)}`);
+      return apiRequest('GET', `/api/user/pnl?email=${encodeURIComponent(email)}`);
     },
     retry: 1,
     onError: (error) => {
@@ -121,7 +121,7 @@ const TradingGreetingCard = ({ userName, pnl: propPnl = 0, brokerName }: Trading
       if (!email) {
         throw new Error('Email is required for this API call');
       }
-      return apiRequest('GET', `/user-balance?email=${encodeURIComponent(email)}`);
+      return apiRequest('GET', `/api/user/balance?email=${encodeURIComponent(email)}`);
     },
     retry: 1,
     onError: (error) => {
@@ -229,7 +229,7 @@ const TradingGreetingCard = ({ userName, pnl: propPnl = 0, brokerName }: Trading
                 <Plus size={18} /> Add Broker
               </button>
               <button className="border border-white px-6 rounded-full font-semibold flex items-center gap-2 hover:bg-blue-500">
-                <span className="text-lg">&times;</span> Create Account
+                 Create Account
               </button>
             </div>
           </div>

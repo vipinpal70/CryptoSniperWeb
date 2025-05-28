@@ -17,7 +17,6 @@ import { Input } from "@/components/ui/input";
 import { Separator } from "@/components/ui/separator";
 import AuthLayout from "@/components/AuthLayout";
 import { Eye, EyeOff } from "lucide-react";
-import { log } from "node:console";
 import { supabase } from "@/lib/supabase";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -51,64 +50,170 @@ export default function SignUp() {
   });
 
   async function onSubmit(values: SignUpValues) {
-    console.log("otp verification code testing");
-
     try {
-      // Set loading state to true when starting the submission
       setIsLoading(true);
-      
-      // Store user details in session storage for later use
-      sessionStorage.setItem("signupEmail", values.email);
-      sessionStorage.setItem("signupName", values.name);
-      sessionStorage.setItem("signupPhone", values.phone);
-      sessionStorage.setItem("signupPassword", values.password);
-      
-      // Step 1: First make the API request to your custom backend to send OTP
-      const signupResponse = await apiRequest("POST", "/api/auth/signup", {
-        email: values.email
-      });
-      
-      if (signupResponse?.message === "OTP sent successfully") {
-        console.log("OTP sent successfully");
+
+      // Store user data in session storage for OTP verification
+      const userData = {
+        name: values.name,
+        email: values.email,
+        phone: values.phone,
+        password: values.password
+      };
+      sessionStorage.setItem("userData", JSON.stringify(userData));
+
+      // First approach: Try to reset password for the email
+      // If this succeeds, it means the user exists
+      try {
+        const { error: resetError } = await supabase.auth.resetPasswordForEmail(values.email, {
+          redirectTo: `${window.location.origin}/auth/reset-password`,
+        });
         
-        // Step 2: Create user_dict for later use in complete-profile
-        const user_dict = {
-          "name": values.name,
-          "email": values.email,
-          "phone": values.phone,
-          "password": values.password,
-          "status": "pending",
-          "referral_code": "",
-          "invited_by": "",
-          "referral_count": 0,
-          "broker_name": ""
-        };
-        
-        // Store user_dict in session storage for use after OTP verification
-        sessionStorage.setItem("user_dict", JSON.stringify(user_dict));
-        
-        // Navigate to OTP verification page
-        navigate("/verify-otp");
-      } else {
-        throw new Error(signupResponse?.message || "Failed to send OTP");
+        // If there's no error, it means the user exists (but we don't want to actually send the reset email)
+        // So we'll immediately cancel this operation and show the toast
+        if (!resetError) {
+          console.log("User already exists (reset password check):", values.email);
+          
+          // Cancel the reset password email by immediately signing out
+          await supabase.auth.signOut();
+          
+          toast({
+            title: "Account exists",
+            description: "An account with this email already exists. Please sign in instead.",
+            variant: "default",
+          });
+          setIsLoading(false);
+          return false;
+        }
+      } catch (resetError) {
+        console.log("Error during reset password check:", resetError);
+        // Continue with normal signup flow if check fails
       }
-    } catch (error) {
-      console.error("Sign up error:", error);
-      // Set loading state back to false on error
-      setIsLoading(false);
-      
-      toast({
-        title: "Error",
-        description: typeof error === 'object' && error !== null && 'message' in error 
-          ? (error as Error).message 
-          : error as string,
-        variant: "destructive",
+
+      // Final approach - try regular signup and catch the error
+      const { data, error } = await supabase.auth.signUp({
+        email: values.email,
+        password: values.password
       });
-    } finally {
-      // Ensure loading state is reset even if there's an uncaught exception
+      
+      // Check for user already registered error
+      if (error) {
+        if (error.message.includes('already registered')) {
+          console.log("User already exists (signup error):", values.email);
+          toast({
+            title: "Account exists",
+            description: "An account with this email already exists. Please sign in instead.",
+            variant: "default",
+          });
+          setIsLoading(false);
+          return false;
+        } else {
+          // Some other error occurred
+          throw error;
+        }
+      }
+      
+      // If we get here, the signup was successful
+      console.log("Signup successful:", { data, error });
+      
+      // Only navigate to OTP verification if we have a user and no error
+      if (data && data.user) {
+        navigate("/auth/otp-verification");
+      } else {
+        // Something unexpected happened
+        toast({
+          title: "Error during signup",
+          description: "There was an issue creating your account. Please try again.",
+          variant: "destructive",
+        });
+        setIsLoading(false);
+      }
+    } catch (error: any) {
+      // Check if this is a 'User already registered' error
+      if (error.message && error.message.includes('already registered')) {
+        toast({
+          title: "Account exists",
+          description: "An account with this email already exists. Please sign in instead.",
+          variant: "default",
+        });
+      } else {
+        toast({
+          title: "Error during signup",
+          description: error.message,
+          variant: "destructive",
+        });
+      }
       setIsLoading(false);
     }
   }
+
+  // async function onSubmit(values: SignUpValues) {
+  //   console.log("otp verification code testing");
+
+  //   try {
+  //     // Set loading state to true when starting the submission
+  //     setIsLoading(true);
+
+  //     // Store user details in session storage for later use
+  //     sessionStorage.setItem("signupEmail", values.email);
+  //     sessionStorage.setItem("signupName", values.name);
+  //     sessionStorage.setItem("signupPhone", values.phone);
+  //     sessionStorage.setItem("signupPassword", values.password);
+
+  //     // Step 1: First make the API request to your custom backend to send OTP
+  //     // const signupResponse = await apiRequest("POST", "/api/auth/signup", {
+  //     //   email: values.email
+  //     // });
+
+  //     // if (signupResponse?.message === "OTP sent successfully") {
+  //     //   console.log("OTP sent successfully");
+
+  //     await signup(values.email, values.password);
+  //     const { data, error } = await supabase.auth.signUp({
+  //       email: values.email,
+  //       password: values.password,
+  //     });
+
+  //     if (error) {
+  //       throw error;
+  //     }
+  //       // Step 2: Create user_dict for later use in complete-profile
+  //       const user_dict = {
+  //         "name": values.name,
+  //         "email": values.email,
+  //         "phone": values.phone,
+  //         "password": values.password,
+  //         "status": "pending",
+  //         "referral_code": "",
+  //         "invited_by": "",
+  //         "referral_count": 0,
+  //         "broker_name": ""
+  //       };
+
+  //       // Store user_dict in session storage for use after OTP verification
+  //       sessionStorage.setItem("user_dict", JSON.stringify(user_dict));
+
+  //       // Navigate to OTP verification page
+  //       navigate("/verify-otp");
+  //     } catch (error) {
+  //       console.error("Sign up error:", error);
+  //       // Set loading state back to false on error
+  //       setIsLoading(false);
+
+  //       toast({
+  //         title: "Error",
+  //         description: typeof error === 'object' && error !== null && 'message' in error 
+  //           ? (error as Error).message 
+  //           : error as string,
+  //         variant: "destructive",
+  //       });
+  //     } finally {
+  //       // Ensure loading state is reset even if there's an uncaught exception
+  //       setIsLoading(false);
+  //     }
+  //   }
+
+
 
   const handleGoogleSignIn = async () => {
     console.log('handleGoogleSignIn calling...');
@@ -137,7 +242,10 @@ export default function SignUp() {
   };
 
   return (
-    <AuthLayout>
+    <AuthLayout 
+      title="Create an account"
+      subtitle="Enter your details to get started"
+    >
       <div className="flex justify-between items-center mb-8">
         <h1 className="text-2xl font-semibold">Sign up</h1>
         <p className="text-sm text-neutral-600">
@@ -221,7 +329,7 @@ export default function SignUp() {
           />
 
           <Button type="submit" className="w-full" disabled={isLoading}>
-            {isLoading ? "Sending OTP..." : "Send OTP"}
+            {isLoading ? "Processing..." : "Sign Up"}
           </Button>
 
           <div className="relative flex items-center justify-center">

@@ -4,6 +4,7 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { useAuth } from "@/lib/auth";
+import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
 import {
   Form,
@@ -30,6 +31,7 @@ type SignInValues = z.infer<typeof signInSchema>;
 export default function SignIn() {
   const [_, navigate] = useLocation();
   const { signin, signInWithGoogle, setCustomUser } = useAuth();
+  const { toast } = useToast(); // Add toast from useToast hook
   const [showPassword, setShowPassword] = React.useState(false);
   const [isLoading, setIsLoading] = React.useState(false);
 
@@ -43,28 +45,6 @@ export default function SignIn() {
   });
 
 
-
-  // const handleGoogleSignIn = async () => {
-  //   console.log('handleGoogleSignIn calling...');
-
-  //   try {
-  //     const { data, error } = await supabase.auth.signInWithOAuth({
-  //       provider: "google",
-  //       options: {
-  //         redirectTo: `${window.location.origin}`,
-  //       },
-
-  //     });
-
-  //     console.log('Supabase fetched data', data);
-
-  //     if (error) {
-  //       console.error("Google sign-in error:", error.message);
-  //     }
-  //   } catch (error) {
-  //     console.error("Google sign-in exception:", error);
-  //   }
-  // };
 
   const handleGoogleSignIn = async () => {
     console.log('handleGoogleSignIn calling...');
@@ -95,117 +75,62 @@ export default function SignIn() {
 
   async function onSubmit(values: SignInValues) {
     try {
+      // Store email in session storage
+      sessionStorage.setItem("signupEmail", values.email);
+      
       // Set loading state to true when starting the submission
       setIsLoading(true);
       
-      // First try to authenticate with Supabase
-      try {
-        // Attempt Supabase authentication
-        const { data, error } = await supabase.auth.signInWithPassword({
-          email: values.email,
-          password: values.password
-        });
-        
-        if (error) {
-          console.log("Supabase authentication failed, trying custom backend...");
-          // If Supabase auth fails, we'll try the custom backend below
-          throw error;
-        }
-        
-        if (data.session) {
-          // Supabase auth succeeded
-          console.log("Supabase authentication successful");
-          
-          // Add a small delay to ensure auth state is fully propagated
-          setTimeout(() => {
-            navigate("/");
-          }, 500);
-          return;
-        }
-      } catch (supabaseError) {
-        // Supabase authentication failed, continue to custom backend
-        console.log("Falling back to custom backend authentication");
+      // First try to sign in directly with Supabase to get user data
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email: values.email,
+        password: values.password
+      });
+      
+      if (error) {
+        throw error;
       }
       
-      // If Supabase auth failed, try custom backend authentication
-      try {
-        // Make a direct request to your custom backend authentication endpoint
-        const response = await fetch('/api/auth/signin', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            email: values.email,
-            password: values.password
-          }),
-          credentials: 'include'
-        });
+      // If we have user data, store it in session storage
+      if (data && data.user) {
+        // Store essential user data in session storage for home page
+        const userData = data.user;
         
-        if (!response.ok) {
-          throw new Error(`Backend authentication failed: ${response.status}`);
-        }
-        
-        const data = await response.json();
-        
-        if (data.success || data.token) {
-          console.log("Custom backend authentication successful", data);
-          
-          // Use the setCustomUser function from the auth context to set the user
-          setCustomUser(data);
-          
-          // For users authenticated with the custom backend,
-          // create a corresponding Supabase account to keep systems in sync
-          try {
-            // First check if user already exists in Supabase
-            const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
-              email: values.email,
-              password: values.password
-            });
-            
-            if (signUpError && !signUpError.message.includes('already exists')) {
-              console.warn("Failed to create Supabase account for existing user", signUpError);
-            }
-            
-            // Try to sign in with Supabase again
-            const { data: signInData } = await supabase.auth.signInWithPassword({
-              email: values.email,
-              password: values.password
-            });
-            
-            // Navigate to home page with a delay to ensure auth state is updated
-            setTimeout(() => {
-              navigate("/");
-            }, 500);
-          } catch (syncError) {
-            console.warn("Error syncing authentication systems", syncError);
-            // Still navigate to home since backend auth succeeded
-            setTimeout(() => {
-              navigate("/");
-            }, 500);
+        // Store user metadata
+        if (userData.user_metadata) {
+          if (userData.user_metadata.name) {
+            sessionStorage.setItem("signupName", userData.user_metadata.name);
           }
-        } else {
-          throw new Error("Authentication failed");
+          if (userData.user_metadata.phone) {
+            sessionStorage.setItem("signupPhone", userData.user_metadata.phone);
+          }
         }
-      } catch (backendError) {
-        console.error("Backend authentication error:", backendError);
-        throw backendError;
+        
+        // Use the auth context to ensure auth state is updated
+        await signin(values.email, values.password);
+        
+        // If login is successful, redirect to home page
+        navigate("/");
+      } else {
+        throw new Error("Failed to retrieve user data");
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error("Sign in error:", error);
+      toast({
+        title: "Sign in failed",
+        description: error.message || "Please check your email and password",
+        variant: "destructive",
+      });
       // Reset loading state on error
       setIsLoading(false);
-    } finally {
-      // Ensure loading state is reset even if there's an uncaught exception
-      // We don't reset here if authentication was successful to avoid button flicker during navigation
-      // The loading state will be reset when the component unmounts
     }
   }
 
-
-
   return (
-    <AuthLayout>
+    <AuthLayout 
+      title="Welcome back"
+      subtitle="Sign in to your account to continue"
+    >
       <div className="flex justify-between items-center mb-8">
         <h1 className="text-2xl font-semibold">Sign in</h1>
         <p className="text-sm text-neutral-600">

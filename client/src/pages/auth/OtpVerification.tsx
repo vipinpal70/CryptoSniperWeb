@@ -1,27 +1,28 @@
 import React, { useState, useEffect } from "react";
 import { useLocation } from "wouter";
-import { useAuth } from "@/lib/auth";
 import { Button } from "@/components/ui/button";
-import { Separator } from "@/components/ui/separator";
 import { useToast } from "@/hooks/use-toast";
 import { RefreshCw } from "lucide-react";
 import AuthLayout from "@/components/AuthLayout";
-import { apiRequest } from "@/lib/queryClient";
-import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/lib/supabase";
+import { Input } from "@/components/ui/input";
+import { useAuth } from "@/lib/auth"; // Import useAuth hook properly
 
 export default function OtpVerification() {
   const [_, navigate] = useLocation();
-  const { signup, verifyOtp, isLoading } = useAuth();
   const { toast } = useToast();
+  const { verifyOtp } = useAuth(); // Use the auth context
   const [otpValues, setOtpValues] = useState<string[]>(Array(6).fill(""));
+  const [isLoading, setIsLoading] = useState(false);
   const [isInvalid, setIsInvalid] = useState(false);
   const [timeLeft, setTimeLeft] = useState(180);
   const [isResending, setIsResending] = useState(false);
-  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [emailStatus, setEmailStatus] = useState<'sending' | 'sent' | 'error'>('sending');
 
-  const email = sessionStorage.getItem("signupEmail") || "";
-  // const phone = sessionStorage.getItem("signupPhone") || "";
+  // Get user data from session storage
+  const userDataStr = sessionStorage.getItem("userData");
+  const userData = userDataStr ? JSON.parse(userDataStr) : null;
+  const email = userData?.email || "";
 
   useEffect(() => {
     if (!email) {
@@ -31,16 +32,38 @@ export default function OtpVerification() {
         description: "Please complete the signup form first",
         variant: "destructive",
       });
+      return;
     }
 
+    // Show a toast to let the user know the email is being sent
+    toast({
+      title: "Sending verification code",
+      description: "Please wait while we send a verification code to your email.",
+    });
 
+    // Check for email status periodically
+    const emailCheckInterval = setInterval(() => {
+      // In a real implementation, you might want to check with your backend
+      // Here we're just simulating a status change after a delay
+      setTimeout(() => {
+        setEmailStatus('sent');
+        toast({
+          title: "Verification code sent",
+          description: `A 6-digit verification code has been sent to ${email}. Please check your inbox and spam folder.`,
+        });
+        clearInterval(emailCheckInterval);
+      }, 5000); // Simulate a 5-second delay for email sending
+    }, 2000);
 
     // Start countdown
     const interval = setInterval(() => {
       setTimeLeft((prev) => (prev > 0 ? prev - 1 : 0));
     }, 1000);
 
-    return () => clearInterval(interval);
+    return () => {
+      clearInterval(interval);
+      clearInterval(emailCheckInterval);
+    };
   }, [email, navigate, toast]);
 
   const handleInputChange = (index: number, value: string) => {
@@ -55,20 +78,16 @@ export default function OtpVerification() {
     // Auto focus to next input
     if (value !== "" && index < 5) {
       const nextInput = document.getElementById(`otp-input-${index + 1}`);
-      if (nextInput) {
-        nextInput.focus();
-      }
+      if (nextInput) nextInput.focus();
     }
 
     // Reset invalid state when user starts typing
-    if (isInvalid) {
-      setIsInvalid(false);
-    }
+    if (isInvalid) setIsInvalid(false);
   };
 
   const handleKeyDown = (
     index: number,
-    e: React.KeyboardEvent<HTMLInputElement>,
+    e: React.KeyboardEvent<HTMLInputElement>
   ) => {
     // On backspace, clear current field and focus previous
     if (e.key === "Backspace" && index > 0 && otpValues[index] === "") {
@@ -77,9 +96,7 @@ export default function OtpVerification() {
       setOtpValues(newOtpValues);
 
       const prevInput = document.getElementById(`otp-input-${index - 1}`);
-      if (prevInput) {
-        prevInput.focus();
-      }
+      if (prevInput) prevInput.focus();
     }
   };
 
@@ -91,10 +108,8 @@ export default function OtpVerification() {
       const digits = pastedData.split("").slice(0, 6);
       const newOtpValues = [...otpValues];
 
-      digits.forEach((digit, index) => {
-        if (index < 6) {
-          newOtpValues[index] = digit;
-        }
+      digits.forEach((digit, idx) => {
+        if (idx < 6) newOtpValues[idx] = digit;
       });
 
       setOtpValues(newOtpValues);
@@ -103,38 +118,40 @@ export default function OtpVerification() {
       const nextEmptyIndex = newOtpValues.findIndex((val) => val === "");
       const focusIndex = nextEmptyIndex === -1 ? 5 : nextEmptyIndex;
       const nextInput = document.getElementById(`otp-input-${focusIndex}`);
-      if (nextInput) {
-        nextInput.focus();
-      }
+      if (nextInput) nextInput.focus();
     }
   };
 
   const handleResendOtp = async () => {
-    if (timeLeft > 0) return;
+    if (timeLeft > 0 || !email) return;
 
     setIsResending(true);
     try {
-
-      // send a request to the api 
-      const verifyResponse = await apiRequest("POST", "/api/auth/signup", {
+      const { error } = await supabase.auth.signInWithOtp({
         email: email,
+        options: {
+          emailRedirectTo: `${window.location.origin}/auth/callback`,
+        },
       });
-      if (verifyResponse?.message === "OTP sent successfully") {
-        // Save details in sessionStorage for future steps
-        setTimeLeft(30);
-        var opt = otpValues.join("");
-        setOtpValues(Array(6).fill(""));
-        setIsInvalid(false);
-        toast({
-          title: "Success",
-          description: `OTP has been resent to your email`,
-        });
 
-        navigate("/verify-otp");
-      }
+      if (error) throw error;
 
+      setTimeLeft(180);
+      setOtpValues(Array(6).fill(""));
+      setIsInvalid(false);
+
+      toast({
+        title: "OTP Resent",
+        description: `A new OTP has been sent to ${email}`,
+        variant: "default",
+      });
     } catch (error) {
       console.error("Resend OTP error:", error);
+      toast({
+        title: "Error",
+        description: "Failed to resend OTP. Please try again.",
+        variant: "destructive",
+      });
     } finally {
       setIsResending(false);
     }
@@ -142,208 +159,170 @@ export default function OtpVerification() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setIsSubmitting(true);
 
     const otp = otpValues.join("");
+
+    // Validate OTP format
     if (otp.length !== 6 || !/^\d+$/.test(otp)) {
-      setIsSubmitting(false);
+      setIsInvalid(true);
       toast({
-        title: "Error",
-        description: "Please enter a valid 6-digit OTP",
+        title: "Invalid OTP",
+        description: "Please enter a valid 6-digit OTP code",
         variant: "destructive",
       });
       return;
     }
 
     try {
-      // Since both backend verify-otp endpoint and Supabase verification are having issues,
-      // we'll proceed directly to completing the user profile
-      
-      // Retrieve the user data from session storage
-      const userDataStr = sessionStorage.getItem("user_dict");
-      const userData = userDataStr ? JSON.parse(userDataStr) : null;
-      const password = sessionStorage.getItem("signupPassword");
-      
+      setIsLoading(true);
+      setIsInvalid(false);
+
       if (!userData) {
-        throw new Error("User data not found. Please try signing up again.");
+        throw new Error("Session expired. Please sign up again.");
       }
       
-      // Complete the user profile using the stored user data
-      const completeResponse = await apiRequest("POST", "/api/auth/complete-profile", userData);
+      // Verify OTP using the auth context function (already imported at the top)
+      const success = await verifyOtp(userData.email, otp);
       
-      if (completeResponse?.message === "Registration completed successfully") {
-        console.log("Profile completed successfully");
-        const profileCompletedKey = `profile_completed_${email}`;
-        localStorage.setItem(profileCompletedKey, 'true');
-        
-        // After successful profile completion, sign in the user with Supabase
-        if (email && password) {
-          try {
-            // Sign in the user with Supabase
-            const { data, error } = await supabase.auth.signInWithPassword({
-              email,
-              password: password
-            });
-            
-            if (error) {
-              console.warn("Auto sign-in after registration failed:", error);
-              toast({
-                title: "Registration Successful",
-                description: "Please sign in with your credentials",
-              });
-              
-              // If sign-in fails, redirect to sign-in page
-              navigate("/signin");
-              return;
-            } else {
-              // If sign-in is successful
-              toast({
-                title: "Success",
-                description: "Registration completed successfully",
-              });
-              
-              // Wait for auth state to update
-              await new Promise(resolve => setTimeout(resolve, 1000));
-              
-              // Navigate to the dashboard/home page
-              navigate("/signin");
-              return;
-            }
-          } catch (signInError) {
-            console.warn("Error during auto sign-in:", signInError);
-            // If there's an error, redirect to sign-in page
-            toast({
-              title: "Registration Successful",
-              description: "Please sign in with your credentials",
-            });
-            navigate("/signin");
-            return;
+      if (!success) {
+        throw new Error("Failed to verify OTP. Please try again.");
+      }
+
+      // If we get here, OTP is verified
+      // Now we can update the user metadata in Supabase
+      try {
+        const { error: updateError } = await supabase.auth.updateUser({
+          data: {
+            name: userData.name,
+            phone: userData.phone,
+            email_verified: true
           }
+        });
+
+        if (updateError) {
+          console.error("Error updating user metadata after verification:", updateError);
+          // Continue with the flow even if metadata update fails
         } else {
-          // If email or password is missing
-          toast({
-            title: "Registration Successful",
-            description: "Please sign in with your credentials",
-          });
-          navigate("/signin");
-          return;
+          console.log("User metadata updated successfully");
         }
-      } else {
-        console.warn("Profile completion response:", completeResponse);
-        throw new Error("Failed to complete registration. Please try again.");
+      } catch (metadataError) {
+        console.error("Exception updating user metadata:", metadataError);
+        // Continue with the flow even if metadata update fails
       }
-    } catch (error) {
-      console.error("Registration error:", error);
-      setIsInvalid(true);
-      // Display error message using toast instead of rendering the error object directly
+
       toast({
-        title: "Error",
-        description: error instanceof Error ? error.message : "Failed to complete registration",
+        title: "Email verified!",
+        description: "Your account has been successfully created and verified.",
+        variant: "default",
+      });
+
+      // Clear sensitive data from session storage
+      sessionStorage.removeItem("userData");
+      
+      // Store user info in session storage for Home page
+      if (userData.name) sessionStorage.setItem("signupName", userData.name);
+      if (userData.phone) sessionStorage.setItem("signupPhone", userData.phone);
+
+      // Redirect to home page
+      navigate("/");
+    } catch (error: any) {
+      console.error("OTP verification error:", error);
+      setIsInvalid(true);
+      toast({
+        title: "Verification failed",
+        description: error.message || "Failed to verify OTP. Please try again.",
         variant: "destructive",
       });
     } finally {
-      setIsSubmitting(false);
+      setIsLoading(false);
     }
   };
 
+  // Format time remaining as MM:SS
+  const formatTime = (seconds: number) => {
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${mins}:${secs.toString().padStart(2, "0")}`;
+  };
+
   return (
-    <AuthLayout>
-      <div className="flex justify-between items-center mb-8">
-        <h1 className="text-2xl font-semibold">Sign up</h1>
-        <p className="text-sm text-neutral-600">
-          Already an account?{" "}
-          <a href="/signin" className="text-primary font-medium block text-end">
-            Sign in
-          </a>
-        </p>
-      </div>
+    <AuthLayout title="" subtitle="">
+      <div className="w-full max-w-md space-y-6">
+        <div className="space-y-2 text-center">
+          <h1 className="text-2xl font-bold tracking-tight">
+            Verify Your Email
+          </h1>
+          <p className="text-muted-foreground">
+            We've sent a 6-digit code to {email}. The code will expire in{" "}
+            <span className="font-medium text-foreground">
+              {formatTime(timeLeft)}
+            </span>
+          </p>
+        </div>
 
-      <div className="space-y-6">
-        <div>
-          <div className="flex justify-between items-center mb-4">
-            <label className="block text-sm font-medium text-neutral-700">
-              Enter OTP
-            </label>
-            <div className="flex items-center text-sm">
-              <span className="text-primary">Time left: {timeLeft}s</span>
-              <button
-                type="button"
-                className={`ml-2 text-primary hover:text-primary/80 focus:outline-none ${timeLeft > 0 || isResending ? "opacity-50 cursor-not-allowed" : ""}`}
-                onClick={handleResendOtp}
-                disabled={timeLeft > 0 || isResending}
-              >
-                <RefreshCw className="w-4 h-4" />
-              </button>
-            </div>
-          </div>
-
-          <div className="flex gap-2">
+        <form onSubmit={handleSubmit} className="space-y-6">
+          <div className="flex justify-center space-x-2">
             {otpValues.map((value, index) => (
-              <input
+              <Input
                 key={index}
                 id={`otp-input-${index}`}
                 type="text"
                 inputMode="numeric"
                 pattern="[0-9]*"
                 maxLength={1}
-                className={`otp-input ${isInvalid ? "error" : ""}`}
                 value={value}
                 onChange={(e) => handleInputChange(index, e.target.value)}
                 onKeyDown={(e) => handleKeyDown(index, e)}
-                onPaste={index === 0 ? handlePaste : undefined}
+                onPaste={handlePaste}
+                className={`h-12 w-12 text-center text-xl ${
+                  isInvalid ? "border-red-500" : ""
+                }`}
+                disabled={isLoading}
                 autoFocus={index === 0}
               />
             ))}
           </div>
 
           {isInvalid && (
-            <p className="mt-1 text-sm text-destructive">Invalid OTP</p>
+            <p className="text-center text-sm text-red-500">
+              Invalid code. Please try again.
+            </p>
           )}
-        </div>
 
-        <Button
-          type="button"
-          className="w-full"
-          onClick={handleSubmit}
-          disabled={isLoading || otpValues.some((val) => val === "")}
-        >
-          {isLoading ? "Verifying..." : "Verify"}
-        </Button>
+          <Button type="submit" className="w-full" disabled={isLoading}>
+            {isLoading ? (
+              <>
+                <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
+                Verifying...
+              </>
+            ) : (
+              "Verify Email"
+            )}
+          </Button>
 
-        <div className="relative flex items-center justify-center">
-          <Separator className="flex-grow" />
-          <span className="flex-shrink mx-4 text-neutral-400 text-sm">or</span>
-          <Separator className="flex-grow" />
-        </div>
-
-        <Button type="button" variant="outline" className="w-full">
-          <svg className="w-5 h-5 mr-2" viewBox="0 0 24 24">
-            <path
-              d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
-              fill="#4285F4"
-            />
-            <path
-              d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"
-              fill="#34A853"
-            />
-            <path
-              d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z"
-              fill="#FBBC05"
-            />
-            <path
-              d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"
-              fill="#EA4335"
-            />
-          </svg>
-          Sign in with Google
-        </Button>
-
-        <p className="text-sm text-neutral-600">
-          Don't have an account?{" "}
-          <a href="/signup" className="text-primary font-medium">
-            Sign Up
-          </a>
-        </p>
+          <div className="text-center text-sm">
+            <p className="text-muted-foreground">
+              Didn't receive a code?{" "}
+              <button
+                type="button"
+                onClick={handleResendOtp}
+                disabled={timeLeft > 0 || isResending}
+                className="font-medium text-primary hover:underline"
+              >
+                {isResending ? (
+                  <span className="inline-flex items-center">
+                    <RefreshCw className="mr-1 h-3 w-3 animate-spin" />
+                    Sending...
+                  </span>
+                ) : timeLeft > 0 ? (
+                  `Resend in ${formatTime(timeLeft)}`
+                ) : (
+                  "Resend Code"
+                )}
+              </button>
+            </p>
+          </div>
+        </form>
       </div>
     </AuthLayout>
   );

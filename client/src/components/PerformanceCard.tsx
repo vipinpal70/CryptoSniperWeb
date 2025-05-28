@@ -185,11 +185,10 @@ const PerformanceCard: React.FC<PerformanceCardProps> = ({ data, showMarker = fa
                             return;
                         }
 
-
-                        const baseUrl = import.meta.env.VITE_API_URL;
-                        const apiUrl = baseUrl.startsWith('http')
+                        const baseUrl = import.meta.env.VITE_API_URL || '';
+                        const apiUrl = baseUrl && baseUrl.startsWith('http')
                           ? new URL('/api/add-strategy', baseUrl)
-                          : new URL(`${window.location.origin}${baseUrl}/add-strategy`);
+                          : new URL('/api/add-strategy', window.location.origin);
                         
                         apiUrl.searchParams.append('email', user.email);
                         apiUrl.searchParams.append('strategy_name', data.name);

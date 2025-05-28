@@ -18,7 +18,7 @@ const DeployedStrategies = () => {
     queryKey: ['/deployed-strategies', user?.email],
     staleTime: 30000,
     queryFn: () => {
-      return apiRequest("GET", `/deployed-strategies?email=${encodeURIComponent(user?.email || '')}`);
+      return apiRequest("GET", `/api/strategies/deployed?email=${encodeURIComponent(user?.email || '')}`);
     }
   });
 

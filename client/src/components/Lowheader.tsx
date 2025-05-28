@@ -17,10 +17,13 @@ export default function Lowheader() {
 
   }, [user]);
 
-  const { data } = useQuery<PriceData[]>({
-    queryKey: ["/cryptolive-data"],
-    staleTime: 60000,
+  const { data, isLoading, error } = useQuery<PriceData[]>({
+    queryKey: ["cryptoPrices"],
     queryFn: () => apiRequest("GET", "/cryptolive-data"),
+    refetchInterval: 5000, // Refetch every 5 seconds
+    refetchIntervalInBackground: true, // Continue refetching when tab is in background
+    staleTime: 10000, // Consider data fresh for 10 seconds
+    refetchOnWindowFocus: true, // Refetch when window regains focus
   });
 
   const cryptoPrices = data || [];
@@ -111,6 +114,8 @@ export default function Lowheader() {
     //     </a>
     //   </div>
     // </div>
+
+
     <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3 px-4 md:px-6 bg-[#DCE6FF] rounded-md py-3 overflow-hidden">
       {/* Crypto Data */}
       <div className="overflow-x-auto whitespace-nowrap text-sm sm:text-base md:text-base flex items-center gap-4">

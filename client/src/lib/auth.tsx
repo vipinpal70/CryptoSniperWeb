@@ -8,8 +8,8 @@ interface AuthContextType {
   user: SupabaseUser | null;
   isLoading: boolean;
   error: string | null;
-  signin: (email: string, password: string) => Promise<void>;
-  signup: (email: string, password: string) => Promise<void>;
+  signin: (email: string, password: string) => Promise<boolean>;
+  signup: (email: string, password: string) => Promise<boolean>;
   verifyOtp: (email: string, otp: string) => Promise<boolean>;
   updateUserPhone: (phone: string) => Promise<boolean>;
   signInWithGoogle: () => Promise<void>;
@@ -108,9 +108,31 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const signin = async (email: string, password: string) => {
     setIsLoading(true);
     setError(null);
-    const { error } = await supabase.auth.signInWithPassword({ email, password });
+    
+    try {
+      // Sign in the user with Supabase (no OTP for login)
+      const { data, error } = await supabase.auth.signInWithPassword({ 
+        email, 
+        password 
+      });
 
-    if (error) {
+      if (error) {
+        console.error("Sign in error:", error.message);
+        setError(error.message);
+        toast({
+          title: "Error",
+          description: error.message,
+          variant: "destructive",
+        });
+        return false;
+      } else {
+        toast({
+          title: "Success",
+          description: "Signed in successfully",
+        });
+        return true;
+      }
+    } catch (error: any) {
       console.error("Sign in error:", error.message);
       setError(error.message);
       toast({
@@ -118,21 +140,50 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         description: error.message,
         variant: "destructive",
       });
-    } else {
-      toast({
-        title: "Success",
-        description: "Signed in successfully",
-      });
+      return false;
+    } finally {
+      setIsLoading(false);
     }
-    setIsLoading(false);
   };
 
   const signup = async (email: string, password: string) => {
     setIsLoading(true);
     setError(null);
-    const { error } = await supabase.auth.signUp({ email, password });
+    
+    try {
+      // If user doesn't exist, proceed with signup
+      const { error: signUpError } = await supabase.auth.signUp({
+        email,
+        password,
+        options: {
+          emailRedirectTo: `${window.location.origin}/auth/callback`,
+          data: {
+            // Add any additional user metadata here
+            signup_date: new Date().toISOString(),
+          }
+        }
+      });
 
-    if (error) {
+      if (signUpError) {
+        // Handle specific error cases
+        if (signUpError.message.includes('already registered')) {
+          toast({
+            title: "Email already in use",
+            description: "This email is already registered. Please sign in or use a different email.",
+            variant: "destructive",
+          });
+          return false;
+        }
+        throw signUpError;
+      }
+
+      toast({
+        title: "Success",
+        description: "Signup successful! Please check your email to verify your account.",
+      });
+      
+      return true;
+    } catch (error: any) {
       console.error("Sign up error:", error.message);
       setError(error.message);
       toast({
@@ -140,13 +191,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         description: error.message,
         variant: "destructive",
       });
-    } else {
-      toast({
-        title: "Success",
-        description: "Signup successful. Check your email for confirmation.",
-      });
+      return false;
+    } finally {
+      setIsLoading(false);
     }
-    setIsLoading(false);
   };
 
   const verifyOtp = async (email: string, otp: string) => {
@@ -154,7 +202,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setError(null);
 
     try {
-      // Verify the OTP using Supabase or API call
+      // Verify the OTP using Supabase
       const { error } = await supabase.auth.verifyOtp({
         email,
         token: otp,
@@ -167,7 +215,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       toast({
         title: "Success",
-        description: "OTP verified successfully",
+        description: "Email verified successfully",
       });
 
       return true;

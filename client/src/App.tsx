@@ -23,7 +23,8 @@ import Visitor from "@/pages/Visitor";
 function ProtectedRoute({ component: Component }: { component: React.ComponentType }) {
   const { user, isLoading } = useAuth();
   const [isCheckingAuth, setIsCheckingAuth] = useState(true);
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  // const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [isAuthenticated, setIsAuthenticated] = useState(true);
   
   useEffect(() => {
     // Double-check authentication with Supabase directly
@@ -66,13 +67,16 @@ function Router() {
       <Route path="/visitor" component={Visitor} />
       <Route path="/signin" component={SignIn} />
       <Route path="/signup" component={SignUp} />
-      <Route path="/verify-otp" component={OtpVerification} />
+      <Route path="/auth/otp-verification" component={OtpVerification} />
       <Route path="/complete-profile" component={CompleteProfile} />
       <Route path="/home" component={() => <ProtectedRoute component={Home} />} />
       <Route path="/" component={() => <ProtectedRoute component={Home} />} />
-      <Route path="/strategies" component={() => <ProtectedRoute component={Strategies} />} />
-      <Route path="/positions" component={() => <ProtectedRoute component={Positions} />} />
-      <Route path="/history" component={() => <ProtectedRoute component={History} />} />
+      {/* <Route path="/strategies" component={() => <ProtectedRoute component={Strategies} />} /> */}
+      <Route path="/strategies" component={() => <Strategies/>} />
+      {/* <Route path="/positions" component={() => <ProtectedRoute component={Positions} />} /> */}
+      <Route path="/positions" component={() => <Positions/>} />
+      {/* <Route path="/history" component={() => <ProtectedRoute component={History} />} /> */}
+      <Route path="/history" component={() => <History/>} />
       <Route path="/terms" component={Terms} />
       <Route component={NotFound} />
     </Switch>

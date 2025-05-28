@@ -4,9 +4,11 @@ import TradingIllustration from "./illustrations/TradingIllustration";
 
 interface AuthLayoutProps {
   children: ReactNode;
+  title: string;
+  subtitle: string;
 }
 
-export default function AuthLayout({ children }: AuthLayoutProps) {
+export default function AuthLayout({ children, title, subtitle }: AuthLayoutProps) {
   return (
     <div className="flex min-h-screen">
       {/* Left sidebar with branding and illustration */}
@@ -25,7 +27,15 @@ export default function AuthLayout({ children }: AuthLayoutProps) {
       
       {/* Right side with content */}
       <div className="w-full md:w-3/5 flex items-center justify-center p-8 bg-white">
-        <div className="w-full max-w-md">
+        <div className="w-full max-w-md space-y-6">
+          <div className="space-y-2 text-center">
+            <h1 className="text-2xl font-bold tracking-tight">
+              {title}
+            </h1>
+            <p className="text-muted-foreground">
+              {subtitle}
+            </p>
+          </div>
           {children}
         </div>
       </div>

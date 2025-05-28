@@ -28,6 +28,7 @@ import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { useAuth } from '@/lib/auth';
 import { supabase } from '@/lib/supabase';
+import * as Tabs from '@radix-ui/react-tabs';
 
 interface Position {
   positionId: string;
@@ -64,6 +65,8 @@ export default function History() {
   const [marginSource, setMarginSource] = useState('All');
   const [margin, setMargin] = useState('All');
   const [filteredData, setFilteredData] = useState<Position[]>([]);
+  const [selectedTime, setSelectedTime] = React.useState("30 Days");
+  const [selectedAsset, setSelectedAsset] = React.useState("BTC");
 
   // Query for fetching position history
   const { data: positionHistory = [], isLoading } = useQuery({
@@ -180,7 +183,6 @@ export default function History() {
     return ['All', ...Array.from(leverages)];
   };
 
-
   // Handle date changes with validation
   const handleStartDateChange = (date: Date | undefined) => {
     if (date && endDate && date > endDate) {
@@ -219,7 +221,7 @@ export default function History() {
             <p className="text-neutral-500">Track your trading performance and portfolio history over time</p>
           </div>
 
-          {isLoading ? (
+          {/* {isLoading ? (
             <Card className="p-6">
               <div className="flex items-center justify-center h-64">
                 <p>Loading position history...</p>
@@ -234,6 +236,283 @@ export default function History() {
           ) : (
             <div>
 
+              <div className="flex flex-wrap gap-4 mb-6">
+                <div className="flex gap-2 items-center">
+                  <div className="text-sm text-gray-500">Time</div>
+                  <Popover>
+                    <PopoverTrigger asChild>
+                      <Button variant="outline" className="h-8 gap-1 px-2 text-sm">
+                        <div className="flex items-center">
+                          <CalendarIcon className="h-4 w-4 mr-1" />
+                          <span>{startDate ? format(startDate, "MMM dd, yyyy") : "Start Date"}</span>
+                        </div>
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-auto p-0" align="start">
+                      <Calendar
+                        mode="single"
+                        selected={startDate}
+                        onSelect={handleStartDateChange}
+                        initialFocus
+                      />
+                    </PopoverContent>
+                  </Popover>
+
+                  <Popover>
+                    <PopoverTrigger asChild>
+                      <Button variant="outline" className="h-8 gap-1 px-2 text-sm">
+                        <div className="flex items-center">
+                          <CalendarIcon className="h-4 w-4 mr-1" />
+                          <span>{endDate ? format(endDate, "MMM dd, yyyy") : "End Date"}</span>
+                        </div>
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-auto p-0" align="start">
+                      <Calendar
+                        mode="single"
+                        selected={endDate}
+                        onSelect={handleEndDateChange}
+                        disabled={date => {
+                          // Disable dates that are before the start date
+                          return startDate ? date < startDate : false
+                        }}
+                        initialFocus
+                      />
+                    </PopoverContent>
+                  </Popover>
+                </div>
+                <div className="flex gap-2 items-center">
+                  <div className="text-sm text-gray-500">Symbol:</div>
+                  <Select value={symbol} onValueChange={setSymbol}>
+                    <SelectTrigger className="h-8 w-24">
+                      <SelectValue placeholder="All" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {getSymbols().map((s: string) => <SelectItem key={s} value={s}>{s}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="flex gap-2 items-center">
+                  <div className="text-sm text-gray-500">Side:</div>
+                  <Select value={positionSide} onValueChange={setPositionSide}>
+                    <SelectTrigger className="h-8 w-24">
+                      <SelectValue placeholder="All" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="All">All</SelectItem>
+                      <SelectItem value="LONG">LONG</SelectItem>
+                      <SelectItem value="SHORT">SHORT</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="flex gap-2 items-center">
+                  <div className="text-sm text-gray-500">Leverage:</div>
+                  <Select value={leverage} onValueChange={setLeverage}>
+                    <SelectTrigger className="h-8 w-24">
+                      <SelectValue placeholder="All" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {getLeverages().map(l => <SelectItem key={l} value={l}>{l}x</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+
+              <div className="bg-white rounded-lg shadow overflow-x-auto p-4 md:p-6">
+                <table className="w-full">
+                  <thead>
+                    <tr className="bg-blue-50 text-gray-600 text-left">
+                      <th className="py-3 px-4 font-medium">Filled Time</th>
+                      <th className="py-3 px-4 font-medium">Futures Direction</th>
+                      <th className="py-3 px-4 font-medium">Filled</th>
+                      <th className="py-3 px-4 font-medium">Filled Price</th>
+                      <th className="py-3 px-4 font-medium">Realised P&L ($)</th>
+                      <th className="py-3 px-4 font-medium">Fee</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filteredData.length > 0 ? (
+                      filteredData.map((row) => {
+                        const dateParts = formatDate(row.updateTime).split(' ');
+                        const date = dateParts[0];
+                        const time = dateParts[1];
+
+                        const isPnlPositive = parseFloat(row.realisedProfit) >= 0;
+                        const pnlColor = isPnlPositive ? 'text-green-600 bg-green-50' : 'text-red-600 bg-red-50';
+
+                        return (
+                          <tr key={row.positionId} className="border-t border-gray-100">
+                            <td className="py-3 px-4">
+                              <div>{date}</div>
+                              <div className="text-sm text-gray-500">{time}</div>
+                            </td>
+                            <td className="py-3 px-4">
+                              <div className="flex items-center">
+                                <div className="w-1 h-8 bg-blue-500 mr-2 rounded-sm"></div>
+                                <div>
+                                  <div>{row.symbol}</div>
+                                  <div className={`text-sm text-gray-500 ${row.positionSide === 'LONG' ? 'text-green-600' : 'text-red-600'}`}>Closed {row.positionSide} {row.leverage}X</div>
+                                </div>
+                              </div>
+                            </td>
+                            <td className="py-3 px-4">{row.positionAmt} {row.symbol.split("-")[0]}</td>
+                            <td className="py-3 px-4">{parseFloat(row.avgPrice).toFixed(3)}</td>
+                            <td className="py-3 px-4">
+                              <div>{parseFloat(row.realisedProfit).toFixed(3)} {row.symbol.split("-")[1]}</div>
+                              <div className={`text-xs px-2 py-0.5 rounded-sm inline-block ${pnlColor}`}>
+                                {(parseFloat(row.realisedProfit) / parseFloat(row.positionAmt)).toFixed(2) + '%'}
+                              </div>
+                            </td>
+                            <td className="py-3 px-4 text-neutral-500">${Math.abs(parseFloat(row.positionCommission)).toFixed(3)} {row.symbol.split("-")[1]}</td>
+                          </tr>
+                        );
+                      })
+                    ) : (
+                      <tr>
+                        <td colSpan={6} className="py-6 px-4 text-center text-gray-500">
+                          No trading history found for the selected filters
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )} */}
+
+        <Tabs.Root defaultValue="transactions" className="w-full">
+          <Tabs.List className="flex border-b border-gray-200 mb-6">
+            <Tabs.Trigger
+              value="performance"
+              className="px-4 py-2 text-sm font-medium text-gray-500 data-[state=active]:text-blue-600 data-[state=active]:border-b-2 data-[state=active]:border-blue-600"
+            >
+              Performance
+            </Tabs.Trigger>
+            <Tabs.Trigger
+              value="transactions"
+              className="px-4 py-2 text-sm font-medium text-gray-500 data-[state=active]:text-blue-600 data-[state=active]:border-b-2 data-[state=active]:border-blue-600"
+            >
+              Transactions
+            </Tabs.Trigger>
+          </Tabs.List>
+
+          {/* Performance tab content */}
+          <Tabs.Content value="performance">
+              <div className="space-y-6">
+                  {/* Filters */}
+                  <div className="flex flex-wrap gap-4 items-center">
+                    {/* Date pickers */}
+                    <div className="flex gap-2 items-center">
+                      <div className="text-sm text-gray-500">Start Date</div>
+                      {/* Start Date Picker */}
+                      <Popover>
+                        <PopoverTrigger asChild>
+                          <Button variant="outline" className="h-8 gap-1 px-2 text-sm">
+                            <CalendarIcon className="h-4 w-4 mr-1" />
+                            <span>{startDate ? format(startDate, "MMM dd, yyyy") : "Start Date"}</span>
+                          </Button>
+                        </PopoverTrigger>
+                        <PopoverContent className="w-auto p-0" align="start">
+                          <Calendar
+                            mode="single"
+                            selected={startDate}
+                            onSelect={handleStartDateChange}
+                            initialFocus
+                          />
+                        </PopoverContent>
+                      </Popover>
+                    </div>
+
+                    <div className="flex gap-2 items-center">
+                      <div className="text-sm text-gray-500">End Date</div>
+                      {/* End Date Picker */}
+                      <Popover>
+                        <PopoverTrigger asChild>
+                          <Button variant="outline" className="h-8 gap-1 px-2 text-sm">
+                            <CalendarIcon className="h-4 w-4 mr-1" />
+                            <span>{endDate ? format(endDate, "MMM dd, yyyy") : "End Date"}</span>
+                          </Button>
+                        </PopoverTrigger>
+                        <PopoverContent className="w-auto p-0" align="start">
+                          <Calendar
+                            mode="single"
+                            selected={endDate}
+                            onSelect={handleEndDateChange}
+                            disabled={date => startDate ? date < startDate : false}
+                            initialFocus
+                          />
+                        </PopoverContent>
+                      </Popover>
+                    </div>
+
+                    {/* Time filters */}
+                    <div className="flex gap-2 ml-4">
+                      {["24 hours", "7 Days", "30 Days", "90 Days", "1 year"].map((label) => (
+                        <Button
+                          key={label}
+                          variant={selectedTime === label ? "default" : "outline"}
+                          size="sm"
+                          onClick={() => setSelectedTime(label)}
+                        >
+                          {label}
+                        </Button>
+                      ))}
+                    </div>
+
+                    {/* Asset Selector */}
+                    <div className="ml-auto">
+                      <Select value={selectedAsset} onValueChange={setSelectedAsset}>
+                        <SelectTrigger className="w-40 h-8 text-sm">
+                          <SelectValue placeholder="Bitcoin (BTC)" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="BTC">Bitcoin (BTC)</SelectItem>
+                          <SelectItem value="ETH">Ethereum (ETH)</SelectItem>
+                          <SelectItem value="USDT">Tether (USDT)</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+
+                  {/* Performance Summary Cards */}
+                  <div className="bg-gray-50 rounded-lg p-6 shadow-md">
+                    <h2 className="text-lg font-semibold mb-1">Portfolio Performance</h2>
+                    <p className="text-sm text-gray-500 mb-6">Track your portfolio value over time.</p>
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                      <div className="bg-white rounded-lg shadow p-4 text-center">
+                        <div className="text-sm text-gray-500 mb-1">Total Value</div>
+                        <div className="text-2xl font-semibold text-gray-800">$ 0.00</div>
+                      </div>
+                      <div className="bg-white rounded-lg shadow p-4 text-center">
+                        <div className="text-sm text-gray-500 mb-1">Total ROI</div>
+                        <div className="text-2xl font-semibold text-green-600">+ 3.94%</div>
+                      </div>
+                      <div className="bg-white rounded-lg shadow p-4 text-center">
+                        <div className="text-sm text-gray-500 mb-1">BTC Value</div>
+                        <div className="text-2xl font-semibold text-gray-800">0.00 BTC</div>
+                      </div>
+                    </div>
+                  </div>
+              </div>
+          </Tabs.Content>
+
+          {/* Transactions tab content */}
+          <Tabs.Content value="transactions">
+            {isLoading ? (
+            <Card className="p-6">
+              <div className="flex items-center justify-center h-64">
+                <p>Loading position history...</p>
+              </div>
+            </Card>
+          ) : filteredData.length === 0 ? (
+            <Card className="p-6">
+              <div className="flex items-center justify-center h-64">
+                <p>No positions found</p>
+              </div>
+            </Card>
+          ) : (
+            <div>
               <div className="flex flex-wrap gap-4 mb-6">
                 <div className="flex gap-2 items-center">
                   <div className="text-sm text-gray-500">Time</div>
@@ -382,6 +661,8 @@ export default function History() {
               </div>
             </div>
           )}
+          </Tabs.Content>
+        </Tabs.Root>
         </main>
       </div>
     </div>

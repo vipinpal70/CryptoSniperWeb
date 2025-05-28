@@ -1,14 +1,21 @@
 import { QueryClient, QueryFunction } from "@tanstack/react-query";
 
-// 1. Set API base URL from environment variable or fallback
-const BASE_URL = import.meta.env.VITE_API_URL;
+// 1. Set API base URL from environment variable or fallback to empty string if not set
+const BASE_URL = import.meta.env.VITE_API_URL || '';
 
 function buildApiUrl(path: string): string {
   // Remove any leading slashes from the path to prevent double slashes
   const cleanPath = path.replace(/^\/+/, '');
   
+  // If no BASE_URL is set, use the current origin and ensure the path starts with /api
+  if (!BASE_URL) {
+    const apiPath = cleanPath.startsWith('api/') ? cleanPath : `api/${cleanPath}`;
+    return `${window.location.origin}/${apiPath}`;
+  }
+  
+  // If BASE_URL is a full URL
   if (BASE_URL.startsWith('http')) {
-    // If base URL is a full URL, ensure it ends with exactly one slash
+    // Ensure it ends with exactly one slash
     const base = BASE_URL.endsWith('/') ? BASE_URL.slice(0, -1) : BASE_URL;
     return `${base}/${cleanPath}`;
   }
