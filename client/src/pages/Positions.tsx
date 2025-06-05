@@ -219,7 +219,7 @@ export default function Positions() {
     <div className="flex min-h-screen bg-neutral-50">
       <Sidebar />
 
-      <div className="flex-1 md:ml-64">
+      <div className="flex-1 md:ml-[14rem]">
         <Header />
         <Lowheader />
 

@@ -34,7 +34,7 @@ export default function Sidebar() {
 
   const socialLinks = [
     { name: "YouTube Channel", icon: <Youtube className="w-5 h-5 mr-2 text-red-500" />, url: "https://www.youtube.com/@iamyashgupta/playlists" },
-    { name: "Join Telegram", icon: <MessageCircle className="w-5 h-5 mr-2 text-blue-500" />, url: "https://t.me/YashGuptaTrader" },
+    { name: "Join Telegram", icon: <MessageCircle className="w-5 h-5 mr-2 text-blue-500" />, url: "https://t.me/infocryptosnipers" },
     { name: "Follow on Instagram", icon: <Instagram className="w-5 h-5 mr-2 text-pink-500" />, url: "https://www.instagram.com/thecryptosnipers?igsh=dmg1Z3Vlb2xjbjNx" },
   ];
 
@@ -44,7 +44,7 @@ export default function Sidebar() {
   ];
 
   return (
-    <aside className="w-64 fixed inset-y-0 bg-white text-black hidden md:flex flex-col z-10">
+    <aside className="w-[14rem] fixed inset-y-0 bg-white text-black hidden md:flex flex-col z-10">
       <div className="p-4">
         <Logo />
       </div>

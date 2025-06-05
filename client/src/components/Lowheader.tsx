@@ -22,7 +22,7 @@ export default function Lowheader() {
     queryFn: () => apiRequest("GET", "/cryptolive-data"),
     refetchInterval: 5000, // Refetch every 5 seconds
     refetchIntervalInBackground: true, // Continue refetching when tab is in background
-    staleTime: 10000, // Consider data fresh for 10 seconds
+    staleTime: 5000, // Consider data fresh for 5 seconds
     refetchOnWindowFocus: true, // Refetch when window regains focus
   });
 
@@ -130,21 +130,14 @@ export default function Lowheader() {
           </span>
         ))}
       </div>
-
       {/* Contact Options */}
       <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2 sm:gap-4 text-sm">
         <a href="#" className="text-neutral-600 hover:text-neutral-900 flex items-center">
-          <Phone className="w-4 h-4 mr-1 text-blue-500" />
-          Call us at +912233445566
-        </a>
-        <a href="#" className="text-neutral-600 hover:text-neutral-900 flex items-center">
           <MessageSquare className="w-4 h-4 mr-1 text-blue-500" />
-          Chat with us
+          {/* Chat with us */}
+          info@thecryptosnipers.com
         </a>
       </div>
     </div>
   );
 }
-
-
-

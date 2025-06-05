@@ -62,7 +62,7 @@ export default function Visitor() {
                                 type: "Ethereum Futures",
                                 description: "A fast-paced Ethereum scalping strategy designed to capture quick, short-term profits.",
                                 leverage: "20X",
-                                margin: "200",
+                                margin: "500",
                                 created_at: "2025-05-05",
                                 updated_at: "2025-05-05",
                                 is_active: true,
@@ -72,7 +72,8 @@ export default function Visitor() {
                                 TotalTrades: 968,
                                 Returns: 300,
                                 WinRate: 67,
-                                MaxDrawdown: 40
+                                MaxDrawdown: 40,
+                                isDeployed: false
                             }}
                         />
 
@@ -95,7 +96,8 @@ export default function Visitor() {
                                 TotalTrades: 1242,
                                 Returns: 187,
                                 WinRate: 72,
-                                MaxDrawdown: 28
+                                MaxDrawdown: 28,
+                                isDeployed: false
                             }}
                         />
 
@@ -103,21 +105,22 @@ export default function Visitor() {
                         <PerformanceCard 
                             data={{
                                 _id: "1002",
-                                name: "SOL High Velocity",
-                                type: "Solana Futures",
-                                description: "High-frequency trading strategy optimized for Solana's fast blockchain.",
-                                leverage: "25X",
-                                margin: "150",
+                                name: "BTC Multiplier",
+                                type: "Bitcoin Futures",
+                                description: "High-frequency trading strategy optimized for Bitcoin's fast blockchain.",
+                                leverage: "10X",
+                                margin: "500",
                                 created_at: "2025-03-20",
                                 updated_at: "2025-05-18",
                                 is_active: true,
-                                BTC: false,
+                                BTC: true,
                                 ETH: false,
-                                SOL: true,
+                                SOL: false,
                                 TotalTrades: 2156,
                                 Returns: 425,
                                 WinRate: 63,
-                                MaxDrawdown: 35
+                                MaxDrawdown: 35,
+                                isDeployed: false
                             }}
                         />
                     </div>

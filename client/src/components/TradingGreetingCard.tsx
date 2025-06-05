@@ -195,31 +195,15 @@ const TradingGreetingCard = ({ userName, pnl: propPnl = 0, brokerName }: Trading
             Hey, Trade Intelligently. Execute Instantly. Grow Confidently.
           </p>
         </div>
-        <div className="text-right">
-          <div className="flex flex-col gap-1">
-            <div>
-              <div className="text-sm text-gray-500">Total P&L</div>
-              <div className={`text-2xl font-bold ${displayPnl >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                ${(typeof displayPnl === 'number' ? displayPnl : 0).toFixed(2)}
-              </div>
-            </div>
-            <div>
-              <div className="text-sm text-gray-500">Total Value</div>
-              <div className="text-2xl font-bold text-blue-600">
-                ${(typeof balance === 'number' ? balance : 0).toFixed(2)}
-              </div>
-            </div>
-          </div>
-        </div>
       </div>
 
       {/* If broker is not connected */}
       {!isBrokerConnected && (
         <div className="bg-blue-600 rounded-xl px-6 py-2 flex flex-col md:flex-row justify-between items-center text-white">
           <div className="max-w-lg">
-            <h2 className="text-lg font-bold mb-2">Ready to Trade Smarter? Connect BingX!</h2>
+            <h2 className="text-lg font-bold mb-2">Ready to Trade Smarter? Connect your Broker!</h2>
             <p className="mb-3  text-sm">
-              Add your <span className="font-semibold">BingX</span> account to activate strategy deployment and start trading smarter.
+              Add your <span className="font-semibold">broker</span> account to activate strategy deployment and start trading smarter.
             </p>
             <div className="flex gap-4 flex-wrap">
               <button
