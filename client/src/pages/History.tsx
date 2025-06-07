@@ -56,6 +56,7 @@ const timeOptions = {
   "30 Days": 30,
   "90 Days": 90,
   "1 year": 365,
+  "All Time": 0,
 } as const;
 
 type TimeKey = keyof typeof timeOptions;
@@ -69,6 +70,57 @@ type AssetDateMap = {
 type PnlData = {
   total: number;
   [asset: string]: AssetDateMap | number; // allows "total" and asset keys like "ETH-USDT"
+};
+
+//** fetching performance history */
+// Moved usePerformanceData outside the History component for correctness.
+// It now accepts 'user' as a parameter.
+const usePerformanceData = (user: any) => { // Consider using a more specific type for user if available from useAuth
+  return useQuery<PnlData, Error>(
+    ['performanceData', user?.email],
+    async () => {
+      const email = user?.email || localStorage.getItem("signupEmail"); // Prioritize user from auth context
+
+      if (!email) {
+        console.error("User email not found for fetching PnL data.");
+        throw new Error("User email not found. Cannot fetch performance data.");
+      }
+
+      const performanceUrl = `/api/account-profit-loss?email=${encodeURIComponent(email)}`;
+      const headers = { accept: "application/json" };
+
+      const res = await fetch(performanceUrl, {
+        method: "GET",
+        headers,
+        credentials: "include",
+      });
+
+      if (!res.ok) {
+        let errorBody = "Unavailable";
+        try {
+          errorBody = await res.text();
+        } catch (e) { /* ignore if can't read body */ }
+        console.error(
+          `Failed to fetch PnL data. Status: ${res.status}. Body: ${errorBody}`
+        );
+        throw new Error(
+          `API error ${res.status}: Failed to fetch PnL data. ${errorBody}`
+        );
+      }
+
+      try {
+        const data: PnlData = await res.json();
+        return data;
+      } catch (parseError) {
+        console.error("Failed to parse PnL data JSON:", parseError);
+        throw new Error("Invalid PnL data format received from server.");
+      }
+    },
+    {
+      staleTime: 30000,
+      enabled: !!user?.email, // Ensure query only runs if user.email is available
+    }
+  );
 };
 
 export default function History() {
@@ -88,8 +140,48 @@ export default function History() {
   // const [selectedTime, setSelectedTime] = React.useState("30 Days");
   const [selectedTime, setSelectedTime] = useState<TimeKey>("24 hours");
   const [pnlData, setPnlData] = useState<PnlData>({ total: 0 });
-  const [selectedAsset, setSelectedAsset] = useState("");
+  const [selectedAsset, setSelectedAsset] = useState("ALL"); // Default to ALL
+  const [assetOptions, setAssetOptions] = useState<string[]>(["ALL"]);
+
+
+
+
+  // Fetch performance data
+  const {
+    data: performanceApiData,
+    isLoading: isLoadingPerformance,
+    error: performanceError
+  } = usePerformanceData(user);
   // const [selectedAsset, setSelectedAsset] = React.useState("BTC");
+
+  useEffect(() => {
+    if (performanceApiData) {
+      // Extract asset keys, filter out 'total' or any non-string keys if necessary
+      const availableAssets = Object.keys(performanceApiData).filter(
+        (key) => key !== "total" && typeof performanceApiData[key] === 'object'
+      );
+      setAssetOptions(["ALL", ...availableAssets]);
+
+      // Optional: if current selectedAsset is not valid, reset to ALL
+      if (!["ALL", ...availableAssets].includes(selectedAsset)) {
+        setSelectedAsset("ALL");
+      }
+    }
+  }, [performanceApiData, selectedAsset]); // Added selectedAsset to dependencies to re-validate if it changes externally
+
+  useEffect(() => {
+    const days = timeOptions[selectedTime];
+    const newEndDate = new Date();
+    const newStartDate = new Date();
+    newStartDate.setDate(newEndDate.getDate() - (days - 1)); // -1 because we want to include the current day
+
+    // Set time to beginning of the day for startDate and end of day for endDate for accurate comparison
+    newStartDate.setHours(0, 0, 0, 0);
+    newEndDate.setHours(23, 59, 59, 999);
+
+    setStartDate(newStartDate);
+    setEndDate(newEndDate);
+  }, [selectedTime]);
 
   const buildApiUrl = (path: string): string => {
     // Remove any leading slashes from the path to prevent double slashes
@@ -109,7 +201,7 @@ export default function History() {
   };
 
   // Query for fetching position history
-  const { data: positionHistory = [], isLoading } = useQuery({
+  const { data: positionHistory = [] as Position[], isLoading } = useQuery<Position[]>({
     queryKey: ["position-history"],
     queryFn: async () => {
       try {
@@ -188,128 +280,133 @@ export default function History() {
     staleTime: 30000, // Cache for 30 seconds
   });
 
-  // const [performanceData, setPerformanceData] = useState({
-  //   totalROI: 0,
-  //   totalValue: 0,
-
-  //   btcValue: 0
-  // });
-
-  //** fetching performance historoy */
-
-  const usePerformanceData = () => {
-    return useQuery({
-      queryKey: ["account-pnl"],
-      queryFn: async () => {
-        const email = localStorage.getItem("signupEmail");
-        console.log("Email from localStorage:", email);
-
-        if (!email) return {};
-
-        const performanceUrl = `/api/account-profit-loss?email=${encodeURIComponent(
-          email
-        )}`;
-
-        const headers = {
-          accept: "application/json",
-          "Content-Type": "application/json",
-        };
-
-        const res = await fetch(performanceUrl, {
-          method: "GET",
-          headers,
-          credentials: "include",
-        });
-
-        console.log("Response status:", res.status);
-
-        const raw = await res.text();
-        console.log("Raw response:", raw);
-
-        if (!res.ok) {
-          console.error("Fetch failed with status", res.status);
-          throw new Error("Failed to fetch PnL data");
-        }
-
-        const data = JSON.parse(raw);
-        console.log("Parsed data==>>>", data);
-        return data;
-      },
-      staleTime: 30000,
-    });
-  };
-
-  const { data: performanceData = {}, error } = usePerformanceData();
-
-  const getFilteredPnlTotal = () => {
-    if (!selectedAsset || !pnlData) return 0;
-
-    const pairKey = Object.keys(pnlData).find((key) =>
-      key.startsWith(selectedAsset)
-    );
-
-    if (!pairKey || !(pairKey in pnlData)) return 0;
-
-    const assetData = pnlData[pairKey] || {};
-
-    const days = timeOptions[selectedTime];
-    const startDate = subDays(new Date(), days);
-
-    let total = 0;
-
-    Object.entries(assetData).forEach(([dateStr, value]) => {
-      const dateOnly = new Date(dateStr + "T00:00:00");
-      if (dateOnly >= startDate) {
-        total += Number(value);
-      }
-    });
-
-    return total;
-  };
-
-  const totalPnl = getFilteredPnlTotal();
 
   // Filter positions based on selected criteria
   useEffect(() => {
-    let filtered = [...positionHistory];
+    let filtered: Position[] = [...positionHistory];
 
     if (symbol !== "All") {
-      filtered = filtered.filter((position) => position.symbol === symbol);
+      filtered = filtered.filter((position: Position) => position.symbol === symbol);
     }
 
     if (positionSide !== "All") {
       filtered = filtered.filter(
-        (position) => position.positionSide === positionSide
+        (position: Position) => position.positionSide === positionSide
       );
     }
 
     if (leverage !== "All") {
       filtered = filtered.filter(
-        (position) => position.leverage === parseInt(leverage)
+        (position: Position) => position.leverage === parseInt(leverage)
       );
     }
 
+    // Use the component's startDate and endDate state for position filtering
     if (startDate) {
+      const startOfDay = new Date(startDate);
+      startOfDay.setHours(0, 0, 0, 0);
       filtered = filtered.filter(
-        (position) => position.openTime >= startDate.getTime()
+        (position: Position) => position.openTime >= startOfDay.getTime()
       );
     }
 
     if (endDate) {
+      const endOfDay = new Date(endDate);
+      endOfDay.setHours(23, 59, 59, 999);
       filtered = filtered.filter(
-        (position) => position.openTime <= endDate.getTime()
+        (position: Position) => position.openTime <= endOfDay.getTime()
       );
     }
 
     setFilteredData(filtered);
   }, [
-    JSON.stringify(positionHistory),
+    positionHistory,
     symbol,
     positionSide,
     leverage,
-    startDate?.getTime(),
-    endDate?.getTime(),
+    startDate,
+    endDate
   ]);
+
+  useEffect(() => {
+    if (!selectedTime) return;
+
+    const now = new Date();
+    let newStartDate = new Date();
+
+    switch (selectedTime) {
+      case "24 hours":
+        newStartDate.setDate(now.getDate() - 1);
+        break;
+      case "7 Days":
+        newStartDate.setDate(now.getDate() - 7);
+        break;
+      case "30 Days":
+        newStartDate.setDate(now.getDate() - 30);
+        break;
+      case "90 Days":
+        newStartDate.setDate(now.getDate() - 90);
+        break;
+      case "1 year":
+        newStartDate.setFullYear(now.getFullYear() - 1);
+        break;
+      case "All Time":
+        // For 'All Time', we might want to set startDate to null or a very early date
+        // depending on how 'getFilteredPerformanceData' handles null dates.
+        // For now, let's set it to a very early date or null.
+        // If your data has a known earliest point, use that. Otherwise, null might be better.
+        setStartDate(undefined); // Or a specific very early new Date('1970-01-01')
+        setEndDate(undefined); // Or new Date()
+        return; // Exit early for All Time
+      default:
+        return; // Do nothing if selectedTime is not recognized
+    }
+    newStartDate.setHours(0, 0, 0, 0);
+    now.setHours(23, 59, 59, 999);
+
+    setStartDate(newStartDate);
+    setEndDate(now);
+  }, [selectedTime, setStartDate, setEndDate]);
+
+  const getFilteredPerformanceData = () => {
+    if (!performanceApiData || Object.keys(performanceApiData).length === 0) {
+      return { totalPnlForPeriod: 0, dailyPnlEntries: [] };
+    }
+
+    let periodTotalPnl = 0;
+    const dailyPnlEntries: { date: string; pnl: number; asset: string }[] = [];
+
+    const assetsToProcess: string[] = [];
+    if (selectedAsset === "ALL") {
+      assetsToProcess.push(...Object.keys(performanceApiData).filter(key => key !== "total" && typeof performanceApiData[key] === 'object'));
+    } else if (performanceApiData[selectedAsset]) {
+      assetsToProcess.push(selectedAsset);
+    }
+
+    assetsToProcess.forEach(assetKey => {
+      const assetData = performanceApiData[assetKey] as AssetDateMap;
+      if (assetData) {
+        Object.entries(assetData).forEach(([dateStr, pnl]) => {
+          const entryDate = new Date(dateStr);
+          // Ensure dates are valid and PNL is a number
+          if (!isNaN(entryDate.getTime()) && typeof pnl === 'number') {
+            const isAfterStartDate = startDate ? entryDate >= new Date(new Date(startDate).setHours(0, 0, 0, 0)) : true;
+            const isBeforeEndDate = endDate ? entryDate <= new Date(new Date(endDate).setHours(23, 59, 59, 999)) : true;
+
+            if (isAfterStartDate && isBeforeEndDate) {
+              periodTotalPnl += pnl;
+              dailyPnlEntries.push({ date: dateStr, pnl, asset: assetKey });
+            }
+          }
+        });
+      }
+    });
+
+    // Sort entries by date ascending
+    dailyPnlEntries.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+
+    return { totalPnlForPeriod: periodTotalPnl, dailyPnlEntries };
+  };
 
   const formatDate = (timestamp: number) => {
     if (isNaN(timestamp) || typeof timestamp !== "number") {
@@ -357,6 +454,9 @@ export default function History() {
     setEndDate(date);
   };
 
+  // Get filtered performance data for display
+  const { totalPnlForPeriod, dailyPnlEntries } = getFilteredPerformanceData();
+
   return (
     <div className="flex min-h-screen bg-white">
       <Sidebar />
@@ -388,185 +488,211 @@ export default function History() {
 
             {/* Performance tab content */}
             <Tabs.Content value="performance">
-              <div className="space-y-6">
-                {/* Filters */}
-                <div className="flex items-center gap-4">
-                  {/* Date pickers */}
-                  <div className="flex items-center gap-2">
-                    <div className="text-sm text-gray-600">Start Date</div>
-                    {/* Start Date Picker */}
-                    <Popover>
-                      <PopoverTrigger asChild>
-                        <Button
-                          variant="outline"
-                          className="h-8 gap-1 px-2 text-sm"
-                        >
-                          <CalendarIcon className="h-4 w-4 mr-1" />
-                          <span>
-                            {startDate
-                              ? format(startDate, "MMM dd, yyyy")
-                              : ""}
-                          </span>
-                        </Button>
-                      </PopoverTrigger>
-                      <PopoverContent className="w-auto p-0" align="start">
-                        <Calendar
-                          mode="single"
-                          selected={startDate}
-                          onSelect={handleStartDateChange}
-                          initialFocus
-                        />
-                      </PopoverContent>
-                    </Popover>
-                  </div>
-
-                  <div className="flex gap-2 items-center">
-                    <div className="text-sm text-gray-600">End Date</div>
-                    {/* End Date Picker */}
-                    <Popover>
-                      <PopoverTrigger asChild>
-                        <Button
-                          variant="outline"
-                          className="h-8 gap-1 px-2 text-sm"
-                        >
-                          <CalendarIcon className="h-4 w-4 mr-1" />
-                          <span>
-                            {endDate
-                              ? format(endDate, "MMM dd, yyyy")
-                              : ""}
-                          </span>
-                        </Button>
-                      </PopoverTrigger>
-                      <PopoverContent className="w-auto p-0" align="start">
-                        <Calendar
-                          mode="single"
-                          selected={endDate}
-                          onSelect={handleEndDateChange}
-                          disabled={(date) =>
-                            startDate ? date < startDate : false
-                          }
-                          initialFocus
-                        />
-                      </PopoverContent>
-                    </Popover>
-                  </div>
-                  {/* Time filters */}
-                  <div className="flex items-center space-x-2 bg-white border rounded-full px-2 py-1">
-                    {timeLabels.map((label) => (
-                      <Button
-                        key={label}
-                        variant={selectedTime === label ? "default" : "ghost"}
-                        size="sm"
-                        onClick={() => setSelectedTime(label)}
-                        className="bg-blue-600 text-white hover:bg-blue-700 rounded-full px-4 py-1 text-xs"
-                      >
-                        {label}
-                      </Button>
-                    ))}
-                  </div>
-
-                  {/* Performance Summary Cards */}
-                  {/* <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                    <div className="bg-white rounded-lg shadow p-4 text-center">
-                      <div className="text-sm text-gray-500 mb-1">
-                        Total Value
+              {isLoadingPerformance ? (
+                <div className="flex justify-center items-center h-64">
+                  <p className="text-gray-500">Loading performance data...</p>
+                  {/* Optionally, add a spinner component here */}
+                </div>
+              ) : performanceError ? (
+                <div className="flex flex-col justify-center items-center h-64 p-4 border border-red-300 bg-red-50 rounded-md">
+                  <p className="text-red-700 font-semibold">Error loading performance data:</p>
+                  <p className="text-red-600 mt-1">{performanceError.message}</p>
+                  {/* Optionally, add a retry button */}
+                </div>
+              ) : (
+                <div className="space-y-6">
+                  {/* Filters */}
+                  <div className="flex-col items-center gap-4">
+                    <div className="flex items-center gap-4">
+                      {/* Date pickers */}
+                      <div className="flex items-center gap-2">
+                        <div className="text-sm text-gray-600">Start Date</div>
+                        {/* Start Date Picker */}
+                        <Popover>
+                          <PopoverTrigger asChild>
+                            <Button
+                              variant="outline"
+                              className="h-8 gap-1 px-2 text-sm"
+                            >
+                              <CalendarIcon className="h-4 w-4 mr-1" />
+                              <span>
+                                {startDate
+                                  ? format(startDate, "MMM dd, yyyy")
+                                  : ""}
+                              </span>
+                            </Button>
+                          </PopoverTrigger>
+                          <PopoverContent className="w-auto p-0" align="start">
+                            <Calendar
+                              mode="single"
+                              selected={startDate}
+                              onSelect={handleStartDateChange}
+                              initialFocus
+                            />
+                          </PopoverContent>
+                        </Popover>
                       </div>
-                      <div
-                        className={`text-2xl font-semibold ${totalPnl >= 0 ? "text-green-600" : "text-red-600"
-                          }`}
-                      >
-                        {totalPnl.toFixed(2)} USDT
+
+                      <div className="flex gap-2 items-center">
+                        <div className="text-sm text-gray-600">End Date</div>
+                        {/* End Date Picker */}
+                        <Popover>
+                          <PopoverTrigger asChild>
+                            <Button
+                              variant="outline"
+                              className="h-8 gap-1 px-2 text-sm"
+                            >
+                              <CalendarIcon className="h-4 w-4 mr-1" />
+                              <span>
+                                {endDate ? format(endDate, "MMM dd, yyyy") : ""}
+                              </span>
+                            </Button>
+                          </PopoverTrigger>
+                          <PopoverContent className="w-auto p-0" align="start">
+                            <Calendar
+                              mode="single"
+                              selected={endDate}
+                              onSelect={handleEndDateChange}
+                              disabled={(date) =>
+                                startDate ? date < startDate : false
+                              }
+                              initialFocus
+                            />
+                          </PopoverContent>
+                        </Popover>
+                      </div>
+                      {/* Time filters */}
+                      <div className="flex items-center space-x-2 bg-white border rounded-full px-2 py-1">
+                        {timeLabels.map((label) => (
+                          <Button
+                            key={label}
+                            variant={selectedTime === label ? "default" : "ghost"}
+                            size="sm"
+                            onClick={() => setSelectedTime(label)}
+                            className={selectedTime === label ? "bg-blue-600 text-white hover:bg-blue-700 rounded-full px-4 py-1 text-xs" : "bg-gray-200 text-gray-700 hover:bg-gray-300 rounded-full px-4 py-1 text-xs"}
+                          >
+                            {label}
+                          </Button>
+                        ))}
                       </div>
                     </div>
-
-                    <div className="bg-white rounded-lg shadow p-4 text-center">
-                      <div className="text-sm text-gray-500 mb-1">
-                        Total ROI
-                      </div>
-                      <div className="text-2xl font-semibold text-green-600">
-                        + 3.94%
-                      </div>
-                    </div>
-
-                    <div className="bg-white rounded-lg shadow p-4 text-center">
-                      <div className="text-sm text-gray-500 mb-1">
-                        {selectedAsset} Value
-                      </div>
-                      <div className="text-2xl font-semibold text-gray-800">
-                        {totalPnl.toFixed(4)} {selectedAsset}
-                      </div>
-                    </div>
-                  </div> */}
-
-                  {/* Portfolio Performance */}
-                  <div className="mb-8">
-                    <div className="flex items-center justify-between mb-4">
-                      <div>
-                        <h2 className="text-xl font-bold">Portfolio Performance</h2>
-                        <p className="text-gray-600 text-sm">Track your portfolio value over time.</p>
-                      </div>
-                      {/* Asset selector */}
-                      <div className="mb-6">
-                        <Select
-                          value={selectedAsset}
-                          onValueChange={setSelectedAsset}
-                        >
-                          <SelectTrigger className="w-48 h-8 text-sm">
-                            <SelectValue placeholder="Select Asset" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {Object.keys(pnlData)
-                              .filter((key) => key !== "total")
-                              .map((key) => {
-                                const asset = key.split("-")[0];
-                                return (
+                    {/* Portfolio Performance */}
+                    <div className="mt-6">
+                      <div className="mb-8">
+                        <div className="flex items-center justify-between mb-4">
+                          <div>
+                            <h2 className="text-xl font-bold">
+                              Portfolio Performance
+                            </h2>
+                            <p className="text-gray-600 text-sm">
+                              Track your portfolio value over time.
+                            </p>
+                          </div>
+                          {/* Asset selector */}
+                          <div className="mb-6">
+                            <Select
+                              value={selectedAsset}
+                              onValueChange={setSelectedAsset}
+                            >
+                              <SelectTrigger className="w-48 h-8 text-sm">
+                                <SelectValue placeholder="Select Asset" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {assetOptions.map((asset) => (
                                   <SelectItem key={asset} value={asset}>
                                     {asset}
                                   </SelectItem>
-                                );
-                              })}
-                          </SelectContent>
-                        </Select>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          </div>
+                        </div>
+
+                        {/* Stats Cards */}
+                        <div className="grid grid-cols-3 gap-6">
+                          <Card className="bg-gray-100">
+                            <CardContent className="p-6">
+                              <div className="flex items-center space-x-2 mb-2">
+                                <div className="w-6 h-6 bg-gray-800 rounded-full flex items-center justify-center">
+                                  <span className="text-white text-xs font-bold">
+                                    $
+                                  </span>
+                                </div>
+                                <span className="text-sm text-gray-600">
+                                  Total Value:
+                                </span>
+                              </div>
+                              <div
+                                className={`text-2xl font-bold ${totalPnlForPeriod >= 0 ? "text-green-500" : "text-red-500"
+                                  }`}
+                              >
+                                {totalPnlForPeriod.toFixed(2)} USDT
+                              </div>
+                            </CardContent>
+                          </Card>
+
+                          <Card className="bg-gray-100">
+                            <CardContent className="p-6">
+                              <div className="text-sm text-gray-600 mb-2">
+                                Total ROI:
+                              </div>
+                              <div className="text-3xl font-bold text-green-500">
+                                + 3.94 %
+                              </div>
+                            </CardContent>
+                          </Card>
+
+                          <Card className="bg-gray-100">
+                            <CardContent className="p-6">
+                              <div className="text-sm text-gray-600 mb-2">
+                                {selectedAsset === "ALL" ? "Overall P&L:" : `${selectedAsset} P&L:`}
+                              </div>
+                              <div className={`text-3xl font-bold ${totalPnlForPeriod >= 0 ? 'text-green-500' : 'text-red-500'}`}>
+                                {totalPnlForPeriod.toFixed(2)} USDT
+                              </div>
+                            </CardContent>
+                          </Card>
+                        </div>
+
+                        {/* Daily P&L Breakdown Table */}
+                        <div className="mt-8">
+                          <h3 className="text-lg font-semibold mb-4">Daily P&L Breakdown</h3>
+                          {dailyPnlEntries.length > 0 ? (
+                            <div className="overflow-x-auto rounded-lg border">
+                              <table className="min-w-full divide-y divide-gray-200">
+                                <thead className="bg-gray-50">
+                                  <tr>
+                                    <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Date</th>
+                                    {selectedAsset === "ALL" && (
+                                      <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Asset</th>
+                                    )}
+                                    <th scope="col" className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">P&L (USDT)</th>
+                                  </tr>
+                                </thead>
+                                <tbody className="bg-white divide-y divide-gray-200">
+                                  {dailyPnlEntries.map((entry, index) => (
+                                    <tr key={index} className={index % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
+                                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{format(new Date(entry.date), "MMM dd, yyyy")}</td>
+                                      {selectedAsset === "ALL" && (
+                                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{entry.asset}</td>
+                                      )}
+                                      <td className={`px-6 py-4 whitespace-nowrap text-sm text-right ${entry.pnl >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                                        {entry.pnl.toFixed(2)}
+                                      </td>
+                                    </tr>
+                                  ))}
+                                </tbody>
+                              </table>
+                            </div>
+                          ) : (
+                            <p className="text-sm text-gray-500">No performance data available for the selected period or asset.</p>
+                          )}
+                        </div>
                       </div>
                     </div>
-
-                    {/* Stats Cards */}
-                    <div className="grid grid-cols-3 gap-6">
-                      <Card className="bg-gray-100">
-                        <CardContent className="p-6">
-                          <div className="flex items-center space-x-2 mb-2">
-                            <div className="w-6 h-6 bg-gray-800 rounded-full flex items-center justify-center">
-                              <span className="text-white text-xs font-bold">$</span>
-                            </div>
-                            <span className="text-sm text-gray-600">Total Value:</span>
-                          </div>
-                          <div
-                            className={`text-2xl font-semibold ${totalPnl >= 0 ? "text-green-600" : "text-red-600"
-                              }`}
-                          >
-                            {totalPnl.toFixed(2)} USDT
-                          </div>
-                        </CardContent>
-                      </Card>
-
-                      <Card className="bg-gray-100">
-                        <CardContent className="p-6">
-                          <div className="text-sm text-gray-600 mb-2">Total ROI:</div>
-                          <div className="text-3xl font-bold text-green-500">+ 3.94 %</div>
-                        </CardContent>
-                      </Card>
-
-                      <Card className="bg-gray-100">
-                        <CardContent className="p-6">
-                          <div className="text-sm text-gray-600 mb-2">BTC Value:</div>
-                          <div className="text-3xl font-bold">0.00 BTC</div>
-                        </CardContent>
-                      </Card>
-                    </div>
                   </div>
-
                 </div>
-              </div>
+              )}
             </Tabs.Content>
 
             {/* Transactions tab content */}
